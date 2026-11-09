@@ -287,7 +287,7 @@ table.rt input{width:84px;border:1px solid var(--line);border-radius:4px;padding
 .eqs-flatbed{stroke:var(--eq-flatbed)} .eqs-wheellift{stroke:var(--eq-wheellift)} .eqs-carrier{stroke:var(--eq-carrier)} .eqs-heavy{stroke:var(--eq-heavy)}
 .pinmark{fill:var(--accent);stroke:var(--ink);stroke-width:1.5}
 /* Truck day panel */
-.day{padding:12px;display:flex;flex-direction:column;gap:8px;margin-top:12px;border-left-width:4px}
+.day{padding:12px;display:flex;flex-direction:column;gap:8px;border-left-width:4px;box-shadow:0 0 0 2px var(--accent)}
 .day-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
 .day-h .name{font-family:var(--font-display);font-size:20px;font-weight:600}
 .day-h .x{margin-left:auto}
@@ -362,10 +362,10 @@ table.rt input{width:84px;border:1px solid var(--line);border-radius:4px;padding
       </div>
       <div class="legend" id="milesNote"></div>
     </div>
-    <div class="card day" id="dayCard" hidden></div>
   </section>
 
   <section class="panel">
+    <div class="card day" id="dayCard" hidden></div>
     <div id="view-board" role="tabpanel" aria-labelledby="tab-board"></div>
     <div id="view-call" role="tabpanel" aria-labelledby="tab-call" hidden>
       <div class="section-h"><div><h2>New call</h2><p class="lede">Fill the call while you talk. The best truck, the price and the route change update as you type.</p></div>
@@ -1288,7 +1288,7 @@ document.addEventListener('click',e=>{
   if(b.id==='locBtn'){const t=truck(S.textTruck);const p={lat:t.pos.lat+(Math.random()-.5)*0.01,lng:t.pos.lng+(Math.random()-.5)*0.01};driverSays(t,'[Location pin] https://maps.google.com/?q='+coord(p),{loc:p});renderAll();return;}
   if(b.id==='ratesReset'){S.rates=JSON.parse(JSON.stringify(DEFAULT_RATES));renderAll();toast('Sample rates restored.');return;}
   if(b.dataset.best){assignBest(b.dataset.best);return;}
-  if(b.dataset.show){selectTruck(b.dataset.show,true);if(window.innerWidth<=920)$('.mapcol').scrollIntoView({behavior:'smooth'});return;}
+  if(b.dataset.show){selectTruck(b.dataset.show,true);(window.innerWidth<=920?$('.mapcol'):$('#dayCard')).scrollIntoView({behavior:'smooth',block:'start'});return;}
   if(b.dataset.unselect){S.selected=null;S.fitPending=true;renderAll();return;}
   if(b.dataset.openthread){S.textTruck=b.dataset.openthread;switchTab('texts');return;}
   if(b.dataset.text){const t=truck(b.dataset.text);sendRoute(t,'Your route:');toast('Route texted to '+t.driver+'.');renderAll();return;}
