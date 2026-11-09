@@ -1,0 +1,1153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Hook and Haul Dispatch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a dispatch console. Live map on the left, the work panel on the right. Stacks on phones. */
+:root{
+  --bg:#eceff3; --surface:#ffffff; --surface-2:#f4f6f8; --ink:#17212c; --muted:#596777; --line:#d2d9e1;
+  --accent:#e9a200; --accent-ink:#7c5600; --accent-soft:#fdf1d2;
+  --urgent:#c4352b; --urgent-soft:#fbe5e2; --ok:#2c7a4b; --ok-soft:#e1f2e7;
+  --map:#e2e7ed; --road:#c6ced8; --road-label:#7b8896; --place:#9aa6b3;
+  --eq-flatbed:#2f6db3; --eq-wheellift:#7457b3; --eq-carrier:#23857f; --eq-heavy:#b3542b;
+  --bubble-in:#e6eaef; --bubble-out:#2f6db3; --bubble-out-ink:#ffffff; --bubble-bot:#fdf1d2;
+  --font-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --font-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e141b; --surface:#161f29; --surface-2:#1c2733; --ink:#e5eaf0; --muted:#94a2b2; --line:#2a3644;
+  --accent:#f2b01e; --accent-ink:#f5c04a; --accent-soft:#3a2f12;
+  --urgent:#ff6d60; --urgent-soft:#3d1c19; --ok:#5ec48a; --ok-soft:#173326;
+  --map:#121a23; --road:#2b3a4a; --road-label:#6f8091; --place:#4d5d6e;
+  --eq-flatbed:#5b9be6; --eq-wheellift:#a088e6; --eq-carrier:#45bdb5; --eq-heavy:#e6834f;
+  --bubble-in:#243140; --bubble-out:#3d7fd0; --bubble-out-ink:#ffffff; --bubble-bot:#3a2f12;
+  color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#0e141b; --surface:#161f29; --surface-2:#1c2733; --ink:#e5eaf0; --muted:#94a2b2; --line:#2a3644;
+  --accent:#f2b01e; --accent-ink:#f5c04a; --accent-soft:#3a2f12;
+  --urgent:#ff6d60; --urgent-soft:#3d1c19; --ok:#5ec48a; --ok-soft:#173326;
+  --map:#121a23; --road:#2b3a4a; --road-label:#6f8091; --place:#4d5d6e;
+  --eq-flatbed:#5b9be6; --eq-wheellift:#a088e6; --eq-carrier:#45bdb5; --eq-heavy:#e6834f;
+  --bubble-in:#243140; --bubble-out:#3d7fd0; --bubble-out-ink:#ffffff; --bubble-bot:#3a2f12;
+  color-scheme:dark; }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:14px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--eq-flatbed)}
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.top-inner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand{display:flex;align-items:center;gap:10px}
+.beacon{width:14px;height:14px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.brand h1{font-family:var(--font-display);font-weight:700;font-size:26px;letter-spacing:.02em;margin:0;line-height:1}
+.brand small{display:block;color:var(--muted);font-size:12px}
+.clock{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px}
+.clock b{font-family:var(--font-mono);color:var(--ink);font-size:15px;font-weight:500}
+.tabs{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px;width:100%}
+.tab{border:1px solid transparent;background:none;padding:6px 12px;border-radius:4px;cursor:pointer;white-space:nowrap;color:var(--muted);font-weight:500}
+.tab:hover{color:var(--ink);background:var(--surface-2)}
+.tab[aria-selected="true"]{color:var(--ink);background:var(--accent-soft);border-color:var(--accent)}
+.tab .dot{display:inline-block;min-width:18px;padding:0 5px;margin-left:6px;border-radius:9px;background:var(--urgent);color:#fff;font-size:11px;line-height:18px;text-align:center}
+
+.demo-note{background:var(--accent-soft);color:var(--ink);font-size:12.5px;padding-block:6px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line)}
+
+.app{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start;padding-block:16px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1500px;margin:0 auto}
+@media (max-width:920px){.app{grid-template-columns:minmax(0,1fr)}}
+.mapcol{position:sticky;top:112px}
+@media (max-width:920px){.mapcol{position:static}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.mapcard{padding:10px;display:flex;flex-direction:column;gap:8px}
+.maphead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px;align-items:baseline}
+.maphead h2{font-family:var(--font-display);font-size:19px;margin:0;font-weight:600;letter-spacing:.02em}
+#map{width:100%;height:auto;max-height:72vh;display:block;border-radius:4px;background:var(--map);cursor:default;touch-action:manipulation}
+#map.picking{cursor:crosshair}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:10px;height:10px;border-radius:50%;display:inline-block}
+.pickbanner{background:var(--accent);color:#1b1300;padding:6px 10px;border-radius:4px;font-weight:600;font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+
+.panel{display:flex;flex-direction:column;gap:14px;min-width:0}
+.section-h{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.section-h h2{font-family:var(--font-display);font-weight:600;font-size:22px;margin:0;letter-spacing:.02em;text-wrap:balance}
+.lede{color:var(--muted);margin:2px 0 0;max-width:62ch}
+.btn{border:1px solid var(--line);background:var(--surface);padding:7px 12px;border-radius:4px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1b1300;font-weight:600}
+.btn.primary:hover{filter:brightness(1.05)}
+.btn.small{padding:3px 8px;font-size:12.5px}
+.btn.ghost{background:none}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.stat{padding:10px 12px}
+.stat .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.stat .v{font-family:var(--font-display);font-size:28px;font-weight:600;line-height:1.1}
+.stat.warn .v{color:var(--urgent)}
+
+.queue{padding:12px;display:flex;flex-direction:column;gap:8px}
+.qitem{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.qitem:first-of-type{border-top:0}
+.qitem .where{min-width:0}
+.qitem .where div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qitem .sub{color:var(--muted);font-size:12.5px}
+
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:10px;border:1px solid var(--line);white-space:nowrap;letter-spacing:.02em}
+.pill.urgent{background:var(--urgent-soft);color:var(--urgent);border-color:transparent}
+.pill.iaa{background:var(--surface-2)}
+.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.pill.eq{color:#fff;border-color:transparent}
+.eqbg-flatbed{background:var(--eq-flatbed)} .eqbg-wheellift{background:var(--eq-wheellift)} .eqbg-carrier{background:var(--eq-carrier)} .eqbg-heavy{background:var(--eq-heavy)}
+
+.truck{padding:12px;display:flex;flex-direction:column;gap:8px;border-left-width:4px}
+.truck.sel{box-shadow:0 0 0 2px var(--accent)}
+.truck-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.truck-h .name{font-family:var(--font-display);font-size:20px;font-weight:600}
+.truck-h .meta{color:var(--muted);font-size:12.5px}
+.truck-h .totals{margin-left:auto;font-size:12.5px;color:var(--muted)}
+.stops{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.stop{display:grid;grid-template-columns:22px 62px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 0;border-top:1px dashed var(--line);font-size:13px}
+.stop .n{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:600;background:var(--surface-2);border:1px solid var(--line)}
+.stop .n.drop{border-radius:3px}
+.stop .eta{font-family:var(--font-mono);font-size:12.5px}
+.stop .what{min-width:0}
+.stop .what div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stop .what .sub{color:var(--muted);font-size:12px}
+.stop .ctl{display:flex;gap:4px;align-items:center}
+.stop.new{background:var(--accent-soft)}
+.stop.late .eta{color:var(--urgent)}
+.iconbtn{border:1px solid var(--line);background:var(--surface);width:26px;height:26px;border-radius:4px;cursor:pointer;display:grid;place-items:center;font-size:12px;line-height:1}
+.iconbtn:disabled{opacity:.35;cursor:not-allowed}
+select.mini{font-size:12px;padding:3px 4px;border:1px solid var(--line);border-radius:4px;background:var(--surface);max-width:120px}
+.empty{color:var(--muted);font-size:13px;padding:6px 0}
+
+/* New call */
+form.call{padding:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+@media (max-width:560px){form.call{grid-template-columns:minmax(0,1fr)}}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field.full{grid-column:1/-1}
+.field label,.lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500}
+.field input[type=text],.field input[type=tel],.field select,.field input[type=number]{border:1px solid var(--line);border-radius:4px;background:var(--surface);padding:7px 8px;width:100%;min-width:0}
+.locrow{display:flex;gap:6px}
+.locrow select{flex:1;min-width:0}
+.checks{display:flex;flex-wrap:wrap;gap:6px 16px}
+.checks label{display:inline-flex;align-items:center;gap:6px;font-size:13px;text-transform:none;letter-spacing:0;color:var(--ink)}
+
+.quote{padding:14px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px}
+@media (max-width:560px){.quote{grid-template-columns:minmax(0,1fr)}}
+.quote h3,.card h3{font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 6px;letter-spacing:.02em}
+.lines{width:100%;border-collapse:collapse;font-size:13px}
+.lines td{padding:3px 0;border-bottom:1px dashed var(--line);vertical-align:top}
+.lines td:last-child{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:10px}
+.lines tr.total td{border-bottom:0;font-weight:600;padding-top:6px}
+.bigquote{font-family:var(--font-display);font-size:46px;font-weight:700;line-height:1}
+.script{background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:8px 10px;font-size:13px;margin-top:8px}
+.margin-row{display:flex;justify-content:space-between;font-size:13px;padding:2px 0}
+.margin-row b{font-family:var(--font-mono);font-weight:500}
+.margin-row.good b{color:var(--ok)}
+.margin-row.bad b{color:var(--urgent)}
+
+.tablewrap{overflow-x:auto}
+table.rank{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
+table.rank th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;font-weight:500;padding:8px 10px;border-bottom:1px solid var(--line)}
+table.rank td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.rank td.r,table.rank th.r{text-align:right}
+table.rank tbody tr{cursor:pointer}
+table.rank tbody tr:hover{background:var(--surface-2)}
+table.rank tbody tr.chosen{background:var(--accent-soft)}
+table.rank tbody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.why{padding:10px 12px;font-size:13px;color:var(--muted);border-top:1px solid var(--line)}
+
+.diff{padding:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:560px){.diff{grid-template-columns:minmax(0,1fr)}}
+.diff .foot{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:12px}
+.delta{font-size:13px}
+.delta b{font-family:var(--font-mono);font-weight:500}
+
+/* Texts */
+.texts{display:grid;grid-template-columns:180px minmax(0,1fr);gap:14px}
+@media (max-width:620px){.texts{grid-template-columns:minmax(0,1fr)}}
+.drivers{display:flex;flex-direction:column;gap:4px}
+@media (max-width:620px){.drivers{flex-direction:row;overflow-x:auto}}
+.drv{border:1px solid var(--line);background:var(--surface);border-radius:4px;padding:8px 10px;text-align:left;cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:center;white-space:nowrap}
+.drv[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.drv small{display:block;color:var(--muted);font-size:11.5px}
+.unread{width:8px;height:8px;border-radius:50%;background:var(--urgent)}
+.phone{border:1px solid var(--line);border-radius:18px;background:var(--surface);display:flex;flex-direction:column;overflow:hidden;max-width:440px;width:100%}
+.phone-h{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.phone-h b{font-weight:600}
+.phone-h small{color:var(--muted)}
+.thread{padding:12px;display:flex;flex-direction:column;gap:8px;height:420px;overflow-y:auto;background:var(--surface-2)}
+.msg{max-width:85%;padding:7px 10px;border-radius:12px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg .who{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;opacity:.75;margin-bottom:2px}
+.msg.in{align-self:flex-start;background:var(--bubble-bot);color:var(--ink);border-bottom-left-radius:3px}
+.msg.in.dispatch{background:var(--bubble-in)}
+.msg.out{align-self:flex-end;background:var(--bubble-out);color:var(--bubble-out-ink);border-bottom-right-radius:3px}
+.msg.out a{color:var(--bubble-out-ink)}
+.msg img{display:block;max-width:180px;border-radius:6px;margin-top:4px}
+.msg time{display:block;font-size:10.5px;opacity:.6;margin-top:3px;font-family:var(--font-mono)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 0}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:2px 9px;font-size:12px;cursor:pointer;font-family:var(--font-mono)}
+.compose{display:flex;gap:6px;padding:8px 12px 12px;align-items:center}
+.compose input[type=text]{flex:1;min-width:0;border:1px solid var(--line);border-radius:16px;padding:7px 12px;background:var(--surface)}
+.as{display:flex;gap:4px;font-size:12px}
+.as button{border:1px solid var(--line);background:var(--surface);padding:3px 8px;border-radius:4px;cursor:pointer}
+.as button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* Rates */
+.rates{padding:14px;display:flex;flex-direction:column;gap:12px}
+table.rt{width:100%;border-collapse:collapse;font-size:13px;min-width:480px}
+table.rt th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;font-weight:500;padding:6px;border-bottom:1px solid var(--line)}
+table.rt td{padding:6px;border-bottom:1px solid var(--line)}
+table.rt input{width:84px;border:1px solid var(--line);border-radius:4px;padding:4px 6px;background:var(--surface);font-family:var(--font-mono)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+
+/* Plan */
+.plan{padding:16px 18px;display:flex;flex-direction:column;gap:14px;max-width:72ch}
+.plan h3{margin:0}
+.plan p,.plan ul,.plan ol{margin:0}
+.plan li{margin:3px 0}
+.phase{display:grid;grid-template-columns:56px minmax(0,1fr);gap:10px;align-items:start}
+.phase .tag{font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--accent-ink);background:var(--accent-soft);border-radius:4px;text-align:center;padding:2px 0}
+
+.linkbtn{background:none;border:0;padding:0;color:var(--accent-ink);font-weight:600;text-decoration:underline;cursor:pointer}
+.tab-ask{border-color:var(--accent)!important;color:var(--accent-ink)!important;font-weight:600}
+/* Questions */
+.ask{padding:16px 18px;display:flex;flex-direction:column;gap:16px}
+.ask h3{font-family:var(--font-display);font-size:19px;font-weight:600;margin:6px 0 -6px;letter-spacing:.02em;color:var(--accent-ink)}
+.q{display:flex;flex-direction:column;gap:6px;max-width:68ch}
+.q .qt{font-weight:600}
+.opts{display:flex;flex-wrap:wrap;gap:6px}
+.opt{border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:6px 12px;cursor:pointer;font-size:13.5px}
+.opt[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.q input[type=text],.q textarea{border:1px solid var(--line);border-radius:4px;background:var(--surface);padding:8px;width:100%;font:inherit}
+.q textarea{min-height:70px;resize:vertical}
+.counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.counts label{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:4px;padding:6px 8px;font-size:13px}
+.counts input{width:56px;border:1px solid var(--line);border-radius:4px;padding:4px;background:var(--surface);font-family:var(--font-mono)}
+.rate{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;padding:6px 0;border-top:1px dashed var(--line)}
+@media (max-width:560px){.rate{grid-template-columns:minmax(0,1fr)}}
+.savebar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:14px}
+.savebar .msg-s{color:var(--muted);font-size:13px}
+.tally{padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+.tally .bar{display:grid;grid-template-columns:minmax(0,180px) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px}
+.tally .track{height:10px;border-radius:5px;background:var(--surface-2);overflow:hidden;display:flex}
+.tally .need{background:var(--ok)} .tally .nice{background:var(--accent)}
+.quotes li{margin:4px 0}
+/* Help */
+.help{padding:16px 18px;display:flex;flex-direction:column;gap:16px;max-width:72ch}
+.help h3{font-family:var(--font-display);font-size:19px;font-weight:600;margin:0;letter-spacing:.02em}
+.help p,.help ol,.help ul,.help dl{margin:0}
+.help li{margin:4px 0}
+.help dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 14px}
+.help dt{font-weight:600}
+.help dd{margin:0}
+@media (max-width:560px){.help dl{grid-template-columns:minmax(0,1fr)}.help dd{margin-bottom:6px}}
+.help code{font-family:var(--font-mono);background:var(--surface-2);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.faq b{display:block}
+/* Screen vote */
+.vote{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.vote .row input{flex:1;min-width:160px;border:1px solid var(--line);border-radius:4px;padding:6px 8px;background:var(--surface)}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--surface);padding:9px 14px;border-radius:6px;font-size:13px;max-width:calc(100% - 32px);z-index:20;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+
+/* SVG map */
+.road{fill:none;stroke:var(--road);stroke-width:7;stroke-linecap:round}
+.shield{fill:var(--surface);stroke:var(--road-label);stroke-width:1}
+.shield-t{font:600 10px var(--font-body);fill:var(--road-label);text-anchor:middle}
+.place{fill:var(--place)}
+.yardmark{fill:var(--ink)}
+.maplabel{font:500 10.5px var(--font-body);fill:var(--muted);paint-order:stroke;stroke:var(--map);stroke-width:3px}
+.jobmark{fill:var(--surface);stroke:var(--accent);stroke-width:2.2}
+.jobmark.urgent{stroke:var(--urgent);fill:var(--urgent-soft)}
+.routeline{fill:none;stroke-width:3;stroke-linejoin:round;stroke-linecap:round;opacity:.9}
+.routeline.preview{stroke:var(--accent);stroke-dasharray:7 5;stroke-width:3.5}
+.stopdot{stroke:var(--surface);stroke-width:1.5}
+.stopnum{font:600 9px var(--font-body);fill:#fff;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.truckmark{stroke:var(--surface);stroke-width:2.5;cursor:pointer}
+.truckmark.sel{stroke:var(--accent);stroke-width:3.5}
+.trucktxt{font:700 10px var(--font-body);fill:#fff;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.eqf-flatbed{fill:var(--eq-flatbed)} .eqf-wheellift{fill:var(--eq-wheellift)} .eqf-carrier{fill:var(--eq-carrier)} .eqf-heavy{fill:var(--eq-heavy)}
+.eqs-flatbed{stroke:var(--eq-flatbed)} .eqs-wheellift{stroke:var(--eq-wheellift)} .eqs-carrier{stroke:var(--eq-carrier)} .eqs-heavy{stroke:var(--eq-heavy)}
+.pinmark{fill:var(--accent);stroke:var(--ink);stroke-width:1.5}
+@media (prefers-reduced-motion:no-preference){ .truckmark{transition:cx .4s, cy .4s} }
+</style>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <span class="beacon" aria-hidden="true"></span>
+      <div><h1>Hook and Haul Dispatch</h1><small>H&amp;H Towing and Recovery · the best hookers in Blount County (we mean the trucks)</small></div>
+    </div>
+    <div class="clock">Shift clock <b id="clock">7:30 AM</b><button class="btn small ghost" id="resetBtn" type="button">Reset demo</button></div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" data-tab="board" id="tab-board">Board</button>
+      <button class="tab" role="tab" data-tab="call" id="tab-call">New call</button>
+      <button class="tab" role="tab" data-tab="texts" id="tab-texts">Driver texts</button>
+      <button class="tab" role="tab" data-tab="rates" id="tab-rates">Rates</button>
+      <button class="tab" role="tab" data-tab="help" id="tab-help">Help</button>
+      <button class="tab tab-ask" role="tab" data-tab="ask" id="tab-ask">Tell us what you need</button>
+      <button class="tab" role="tab" data-tab="plan" id="tab-plan">How it works</button>
+    </nav>
+  </div>
+</header>
+<div class="demo-note">This is a practice version. The trucks, jobs and phone numbers are fake, no texts really go out, and the miles are guesses. Click around. You cannot break it. When you are done, <button class="linkbtn" type="button" data-goto="ask">tell us what you need</button>. New here? <button class="linkbtn" type="button" data-goto="help">Read the help</button>.</div>
+
+<main class="app">
+  <section class="mapcol" aria-label="Map">
+    <div class="card mapcard">
+      <div class="maphead"><h2 id="mapTitle">All trucks</h2><button class="btn small ghost" id="showAll" type="button">Show all trucks</button></div>
+      <div id="pickBanner" class="pickbanner" hidden><span id="pickText">Tap the map to set the pickup</span><button class="btn small" id="pickCancel" type="button">Cancel</button></div>
+      <svg id="map" viewBox="0 0 520 636" role="img" aria-label="Map of trucks, jobs and routes"></svg>
+      <div class="legend">
+        <span><i class="sw eqbg-flatbed"></i>Flatbed</span>
+        <span><i class="sw eqbg-wheellift"></i>Wheel-lift</span>
+        <span><i class="sw eqbg-carrier"></i>3-car hauler</span>
+        <span><i class="sw eqbg-heavy"></i>Heavy wrecker</span>
+        <span><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" class="jobmark"/></svg>Waiting job</span>
+        <span><svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="routeline preview"/></svg>Proposed route</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div id="view-board" role="tabpanel" aria-labelledby="tab-board"></div>
+    <div id="view-call" role="tabpanel" aria-labelledby="tab-call" hidden>
+      <div class="section-h"><div><h2>New call</h2><p class="lede">Fill the call while you talk. The best truck, the price and the route change update as you type.</p></div>
+        <button class="btn" id="simAccident" type="button">Simulate an accident call</button></div>
+      <form class="card call" id="callForm" autocomplete="off"></form>
+      <div id="callResults" class="panel"></div>
+    </div>
+    <div id="view-texts" role="tabpanel" aria-labelledby="tab-texts" hidden></div>
+    <div id="view-rates" role="tabpanel" aria-labelledby="tab-rates" hidden></div>
+    <div id="view-help" role="tabpanel" aria-labelledby="tab-help" hidden></div>
+    <div id="view-ask" role="tabpanel" aria-labelledby="tab-ask" hidden></div>
+    <div id="view-plan" role="tabpanel" aria-labelledby="tab-plan" hidden></div>
+    <div id="screenVote" class="card vote"></div>
+  </section>
+</main>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+"use strict";
+/* ---------- fixed data ---------- */
+const MAP_W=520, MAP_H=636, BOUNDS={minLat:35.55,maxLat:36.145,minLng:-84.28,maxLng:-83.68};
+const EQUIP={
+  flatbed:{label:'Flatbed',code:'FB',cap:1},
+  wheellift:{label:'Wheel-lift',code:'WL',cap:1},
+  carrier:{label:'3-car hauler',code:'3C',cap:3},
+  heavy:{label:'Heavy wrecker',code:'HD',cap:1}
+};
+const NEEDS={
+  car:{label:'Car, rolls and steers',allow:['wheellift','flatbed','carrier']},
+  'car-flat':{label:'Car, must ride flat (AWD, wrecked, no keys)',allow:['flatbed','carrier']},
+  semi:{label:'Semi or heavy truck',allow:['heavy']}
+};
+const KINDS={accident:'Accident',iaa:'IAA pickup',motorclub:'Motor club',private:'Private customer'};
+const PLACES=[
+  {id:'yard',name:'Our yard, 116 Nicole Ct',lat:35.7109,lng:-84.0208},
+  {id:'iaa',name:'IAA yard (sample spot)',lat:35.862,lng:-84.105},
+  {id:'alcoa',name:'Body shop, Alcoa',lat:35.789,lng:-83.976},
+  {id:'friendsville',name:'Home, Friendsville',lat:35.755,lng:-84.132},
+  {id:'westknox',name:'Apartments, West Knoxville',lat:35.921,lng:-84.083},
+  {id:'kingston',name:'Dealer, Kingston Pike',lat:35.926,lng:-84.030},
+  {id:'seymour',name:'Home, Seymour',lat:35.886,lng:-83.774},
+  {id:'townsend',name:'Driveway, Townsend',lat:35.675,lng:-83.756},
+  {id:'lenoir',name:'Body shop, Lenoir City',lat:35.797,lng:-84.256},
+  {id:'downtown',name:'Parking garage, Downtown Knoxville',lat:35.962,lng:-83.920},
+  {id:'rockford',name:'Repair shop, Rockford',lat:35.833,lng:-83.940},
+  {id:'wattrd',name:'Truck stop, I-40 at Watt Rd',lat:35.866,lng:-84.200},
+  {id:'louisville',name:'Heavy storage lot, Louisville',lat:35.822,lng:-84.048},
+  {id:'walland',name:'Home, Walland',lat:35.731,lng:-83.818},
+  {id:'sevier',name:'Mechanic, Sevierville Rd',lat:35.799,lng:-83.885},
+  {id:'airport',name:'Airport lot, McGhee Tyson',lat:35.811,lng:-83.994},
+  {id:'i40paper',name:'I-40 WB at Papermill Dr',lat:35.934,lng:-83.990},
+  {id:'us129',name:'US-129 NB at Topside Rd',lat:35.836,lng:-83.968},
+  {id:'i140',name:'I-140 at Hardin Valley Rd',lat:35.935,lng:-84.140},
+  {id:'us321',name:'US-321 at Wears Valley Rd',lat:35.700,lng:-83.795},
+  {id:'i75',name:'I-75 NB at Lenoir City',lat:35.812,lng:-84.238}
+];
+const PL=Object.fromEntries(PLACES.map(p=>[p.id,p]));
+const HIGHWAY_SPOTS=['i40paper','us129','i140','us321','i75'];
+const DEFAULT_RATES={
+  wheellift:{hook:85,loaded:4.00,unloaded:2.50,included:5},
+  flatbed:{hook:110,loaded:4.50,unloaded:3.00,included:5},
+  carrier:{hook:95,loaded:3.75,unloaded:2.75,included:0},
+  heavy:{hook:450,loaded:12.00,unloaded:8.00,included:0},
+  global:{costPerMile:2.10,commissionPct:28,afterHours:50,winch:75,dollies:35,mph:35,pickMin:25,dropMin:10,roadFactor:1.25,billFrom:'truck'}
+};
+
+/* ---------- state ---------- */
+let S;
+function place(id){const p=PL[id];return {name:p.name,lat:p.lat,lng:p.lng,id:p.id};}
+function freshState(){
+  const trucks=[
+    {id:'T1',unit:'Rollback 1',driver:'Marcus',equip:'flatbed',phone:'(865) 555-0141',mapPref:'google',pos:place('yard'),route:[]},
+    {id:'T2',unit:'Rollback 2',driver:'Dee',equip:'flatbed',phone:'(865) 555-0142',mapPref:'apple',pos:place('rockford'),route:[]},
+    {id:'T3',unit:'Wrecker 3',driver:'Sam',equip:'wheellift',phone:'(865) 555-0143',mapPref:'google',pos:place('downtown'),route:[]},
+    {id:'T4',unit:'Carrier 4',driver:'Rita',equip:'carrier',phone:'(865) 555-0144',mapPref:'google',pos:place('yard'),route:[]},
+    {id:'T5',unit:'Heavy 5',driver:'Lou',equip:'heavy',phone:'(865) 555-0145',mapPref:'apple',pos:place('yard'),route:[]}
+  ];
+  const mk=(id,kind,pick,drop,needs,extra)=>Object.assign({id,kind,pick:place(pick),drop:place(drop),needs,urgent:false,status:'open',truck:null,photos:0,vehicle:'',caller:''},extra||{});
+  const jobs={};
+  [
+    mk('J101','iaa','alcoa','iaa','car',{vehicle:'2017 Honda Accord'}),
+    mk('J102','iaa','seymour','iaa','car',{vehicle:'2014 Ford Escape'}),
+    mk('J103','iaa','westknox','iaa','car',{vehicle:'2019 Toyota Corolla'}),
+    mk('J104','iaa','friendsville','iaa','car',{vehicle:'2012 Chevy Malibu'}),
+    mk('J105','iaa','kingston','iaa','car',{vehicle:'2016 Nissan Altima'}),
+    mk('J106','iaa','townsend','iaa','car-flat',{vehicle:'2020 Subaru Outback (AWD)'}),
+    mk('J107','iaa','lenoir','iaa','car',{vehicle:'2015 Jeep Patriot'}),
+    mk('J108','motorclub','downtown','rockford','car',{vehicle:'2018 Kia Soul, no start',status:'assigned',truck:'T3'}),
+    mk('J109','private','wattrd','louisville','semi',{vehicle:'Freightliner Cascadia, blown turbo',status:'assigned',truck:'T5'}),
+    mk('J110','private','walland','sevier','car-flat',{vehicle:'2011 Audi A4 quattro'})
+  ].forEach(j=>jobs[j.id]=j);
+  trucks[2].route=[{job:'J108',kind:'pick'},{job:'J108',kind:'drop'}];
+  trucks[4].route=[{job:'J109',kind:'pick'},{job:'J109',kind:'drop'}];
+  const threads={T1:[],T2:[],T3:[],T4:[],T5:[]};
+  return {clock:7*60+30,seq:201,trucks,jobs,threads,unread:{},rates:JSON.parse(JSON.stringify(DEFAULT_RATES)),
+    tab:'board',selected:null,textTruck:'T3',textAs:'driver',pickMode:null,draft:exampleDraft(),preview:null};
+}
+function exampleDraft(){
+  return {kind:'accident',caller:'Jordan (example caller)',phone:'(865) 555-0199',vehicle:'2016 Honda CR-V, front-end damage',needs:'car-flat',urgent:true,
+    pick:place('us129'),drop:place('yard'),pickSel:'us129',dropSel:'yard',extras:{afterHours:false,winch:false,dollies:false},choice:null};
+}
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function money(n){return '$'+n.toFixed(2);}
+function money0(n){return '$'+Math.round(n).toLocaleString('en-US');}
+function fmtTime(m){m=Math.round(m);let h=Math.floor(m/60)%24,mm=m%60;const ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+String(mm).padStart(2,'0')+' '+ap;}
+function truck(id){return S.trucks.find(t=>t.id===id);}
+function dist(a,b){
+  const R=3958.8,toR=Math.PI/180,dLat=(b.lat-a.lat)*toR,dLng=(b.lng-a.lng)*toR;
+  const x=Math.sin(dLat/2)**2+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x))*S.rates.global.roadFactor;
+}
+function stopLoc(s){const j=S.jobs[s.job];return s.kind==='pick'?j.pick:j.drop;}
+function loadedCount(t){return Object.values(S.jobs).filter(j=>j.truck===t.id&&j.status==='loaded').length;}
+function toPx(p){return {x:(p.lng-BOUNDS.minLng)/(BOUNDS.maxLng-BOUNDS.minLng)*MAP_W,y:(BOUNDS.maxLat-p.lat)/(BOUNDS.maxLat-BOUNDS.minLat)*MAP_H};}
+function fromPx(x,y){return {lat:BOUNDS.maxLat-y/MAP_H*(BOUNDS.maxLat-BOUNDS.minLat),lng:BOUNDS.minLng+x/MAP_W*(BOUNDS.maxLng-BOUNDS.minLng)};}
+function jobName(id){return id==='NEW'?'New call':id;}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3600);}
+
+/* ---------- routing engine ---------- */
+// Walk a route in order. Returns miles, per-stop arrival times, and whether the order is legal.
+function simulate(t,stops){
+  const g=S.rates.global,cap=EQUIP[t.equip].cap;
+  let pos=t.pos,time=S.clock,miles=0,loadedMi=0,load=loadedCount(t),ok=load<=cap;
+  const seen=new Set(),etas=[];
+  for(const s of stops){
+    const loc=stopLoc(s),d=dist(pos,loc);
+    miles+=d; if(load>0) loadedMi+=d;
+    time+=d/g.mph*60; etas.push(time);
+    if(s.kind==='pick'){load++;seen.add(s.job);if(load>cap)ok=false;time+=g.pickMin;}
+    else{const j=S.jobs[s.job];if(j.status!=='loaded'&&!seen.has(s.job))ok=false;load--;time+=g.dropMin;}
+    pos=loc;
+  }
+  return {ok,miles,loadedMi,etas,finish:time};
+}
+// Try every legal place to put a job's pickup and drop-off in a truck's route. Keep the best one.
+function bestInsertion(t,job,urgent){
+  const base=t.route,before=simulate(t,base);let best=null;
+  for(let i=0;i<=base.length;i++){
+    for(let j=i;j<=base.length;j++){
+      const st=base.slice();
+      st.splice(j,0,{job:job.id,kind:'drop'});
+      st.splice(i,0,{job:job.id,kind:'pick'});
+      const sim=simulate(t,st);if(!sim.ok)continue;
+      const added=sim.miles-before.miles,etaPick=sim.etas[i];
+      const late={};let k=0;
+      st.forEach((s,idx)=>{if(s.job===job.id)return;const d=sim.etas[idx]-before.etas[k];k++;if(d>1)late[s.job]=Math.max(late[s.job]||0,d);});
+      const lateSum=Object.values(late).reduce((a,b)=>a+b,0);
+      const score=urgent?etaPick+0.15*lateSum:added+0.03*lateSum+0.04*(sim.finish-S.clock);
+      if(!best||score<best.score)best={stops:st,sim,before,added,etaPick,late,lateSum,score,pickIndex:i};
+    }
+  }
+  return best;
+}
+function eligible(t,job){
+  if(!NEEDS[job.needs].allow.includes(t.equip))return false;
+  if(job.kind==='accident'&&t.equip==='carrier')return false;
+  return true;
+}
+function rankTrucks(job){
+  const out=[];
+  for(const t of S.trucks){if(!eligible(t,job))continue;const ins=bestInsertion(t,job,job.urgent);if(ins)out.push({t,ins});}
+  out.sort((a,b)=>a.ins.score-b.ins.score);
+  return out;
+}
+function estimate(job,c){
+  const t=c.t,r=S.rates[t.equip],g=S.rates.global,st=c.ins.stops,i=c.ins.pickIndex;
+  const from=g.billFrom==='yard'?PL.yard:(i===0?t.pos:stopLoc(st[i-1]));
+  const enroute=dist(from,job.pick),loadedMi=dist(job.pick,job.drop),billLoaded=Math.max(0,loadedMi-r.included);
+  const lines=[
+    ['Hook fee, '+EQUIP[t.equip].label.toLowerCase(),r.hook],
+    ['Enroute '+enroute.toFixed(1)+' mi × '+money(r.unloaded)+(g.billFrom==='yard'?' (from yard)':' (from truck)'),enroute*r.unloaded],
+    ['Towed '+loadedMi.toFixed(1)+' mi'+(r.included?', first '+r.included+' free':'')+' × '+money(r.loaded),billLoaded*r.loaded]
+  ];
+  const x=(S.draft&&job.id==='NEW')?S.draft.extras:{};
+  if(x.afterHours)lines.push(['After-hours fee',g.afterHours]);
+  if(x.winch)lines.push(['Winching',g.winch]);
+  if(x.dollies)lines.push(['Dollies or skates',g.dollies]);
+  const total=lines.reduce((a,l)=>a+l[1],0),quote=Math.ceil(total/5)*5;
+  const fuelWear=c.ins.added*g.costPerMile,pay=quote*g.commissionPct/100,margin=quote-fuelWear-pay;
+  return {lines,total,quote,fuelWear,pay,margin,enroute,loadedMi};
+}
+
+/* ---------- map links and texts ---------- */
+function coord(p){return p.lat.toFixed(5)+','+p.lng.toFixed(5);}
+function mapLink(t,stops){
+  const pts=stops.map(stopLoc);if(!pts.length)return '';
+  if(t.mapPref==='apple')return 'https://maps.apple.com/?saddr='+coord(t.pos)+'&daddr='+pts.map(coord).join('+to:')+'&dirflg=d';
+  const dest=pts[pts.length-1],way=pts.slice(0,-1).slice(0,9);
+  return 'https://www.google.com/maps/dir/?api=1&origin='+coord(t.pos)+'&destination='+coord(dest)+(way.length?'&waypoints='+way.map(coord).join('%7C'):'')+'&travelmode=driving';
+}
+function routeText(t,heading){
+  if(!t.route.length)return (heading?heading+'\n':'')+'You have no stops right now. Head back to the yard.';
+  const sim=simulate(t,t.route);
+  const lines=t.route.map((s,i)=>{const j=S.jobs[s.job];return (i+1)+'. '+fmtTime(sim.etas[i])+' '+(s.kind==='pick'?'PICK UP ':'DROP ')+s.job+' at '+stopLoc(s).name+(s.kind==='pick'&&j.vehicle?' ('+j.vehicle+')':'');});
+  return (heading?heading+'\n':'')+lines.join('\n')+'\nMap ('+(t.mapPref==='apple'?'Apple':'Google')+'): '+mapLink(t,t.route)+'\nReply DONE after each stop. Reply HELP if you are lost. Again.';
+}
+function pushMsg(tid,from,text,extra){
+  S.threads[tid].push(Object.assign({from,text,time:S.clock},extra||{}));
+  if(from==='driver'&&!(S.tab==='texts'&&S.textTruck===tid))S.unread[tid]=true;
+}
+function sendRoute(t,heading){pushMsg(t.id,'hub',routeText(t,heading));}
+
+/* ---------- actions ---------- */
+function assignJob(job,t,ins){
+  t.route=ins.stops;job.status='assigned';job.truck=t.id;
+}
+function planMorning(){
+  const open=Object.values(S.jobs).filter(j=>j.status==='open');
+  if(!open.length){toast('Nothing is waiting. Every job has a truck.');return;}
+  const touched=new Set();let placed=0;const skipped=[];
+  let left=open.slice();
+  while(left.length){
+    let best=null;
+    for(const j of left)for(const t of S.trucks){if(!eligible(t,j))continue;const ins=bestInsertion(t,j,false);if(!ins)continue;if(!best||ins.score<best.ins.score)best={j,t,ins};}
+    if(!best){skipped.push(...left);break;}
+    assignJob(best.j,best.t,best.ins);touched.add(best.t);placed++;
+    left=left.filter(j=>j!==best.j);
+  }
+  touched.forEach(t=>sendRoute(t,'Good morning '+t.driver+'. Your route for today:'));
+  toast('Planned '+placed+' jobs on '+touched.size+' trucks before the coffee kicked in. Each driver got a text.'+(skipped.length?' '+skipped.length+' could not be placed.':''));
+  renderAll();
+}
+function assignBest(jobId){
+  const job=S.jobs[jobId],r=rankTrucks(job);
+  if(!r.length){toast('No truck can take '+jobId+'. Check the equipment it needs.');return;}
+  assignJob(job,r[0].t,r[0].ins);sendRoute(r[0].t,'New job '+jobId+' added. Updated route:');
+  toast(jobId+' went to '+r[0].t.driver+' ('+r[0].t.unit+'). Route texted.');renderAll();
+}
+function completeNext(t,fromText){
+  if(!t.route.length)return null;
+  const sim=simulate(t,t.route),s=t.route[0],j=S.jobs[s.job],g=S.rates.global;
+  S.clock=Math.max(S.clock,sim.etas[0]+(s.kind==='pick'?g.pickMin:g.dropMin));
+  t.pos=Object.assign({},stopLoc(s));t.route.shift();
+  if(s.kind==='pick')j.status='loaded';else j.status='done';
+  if(!fromText)pushMsg(t.id,'dispatch','Dispatch marked '+(s.kind==='pick'?'pickup':'drop-off')+' of '+s.job+' done.');
+  return s;
+}
+function moveStop(t,idx,dir){
+  const r=t.route.slice(),k=idx+dir;if(k<0||k>=r.length)return;
+  [r[idx],r[k]]=[r[k],r[idx]];
+  if(!simulate(t,r).ok){toast('Nope. You cannot drop a car you have not picked up yet, and '+t.unit+' holds '+EQUIP[t.equip].cap+' car'+(EQUIP[t.equip].cap>1?'s':'')+', no matter how good your straps are.');return;}
+  t.route=r;sendRoute(t,'Your stop order changed:');toast(t.driver+' got the new stop order by text.');renderAll();
+}
+function moveJob(jobId,toId){
+  const job=S.jobs[jobId],from=truck(job.truck),to=truck(toId);
+  if(job.status==='loaded'){toast(jobId+' is already on '+from.unit+'. It cannot move until it is dropped.');return;}
+  const keep=from.route;from.route=from.route.filter(s=>s.job!==jobId);
+  const ins=bestInsertion(to,job,job.urgent);
+  if(!ins){from.route=keep;toast(to.unit+' cannot fit '+jobId+'.');return;}
+  assignJob(job,to,ins);
+  sendRoute(from,jobId+' moved to '+to.driver+'. Your updated route:');
+  sendRoute(to,jobId+' added from '+from.driver+'. Your updated route:');
+  toast(jobId+' moved from '+from.driver+' to '+to.driver+'. Both drivers got texts.');renderAll();
+}
+
+/* ---------- driver SMS commands ---------- */
+function driverSays(t,text,extra){
+  pushMsg(t.id,'driver',text,extra);
+  const cmd=text.trim().toUpperCase();
+  let reply=null;
+  if(extra&&extra.photo){
+    const s=t.route[0]||null,j=s?S.jobs[s.job]:Object.values(S.jobs).find(x=>x.truck===t.id&&x.status==='done');
+    if(j){j.photos++;reply='Photo saved to '+j.id+' ('+j.photos+' photo'+(j.photos>1?'s':'')+' on file).';}else reply='Photo saved. It is not linked to a job yet. Dispatch will link it.';
+  }else if(extra&&extra.loc){
+    t.pos={lat:extra.loc.lat,lng:extra.loc.lng,name:'Shared location'};reply='Location received. Your truck is updated on the dispatch map.';
+  }else if(cmd==='HELP'){
+    reply='Commands:\nSCHEDULE - your full route\nNEXT - your next stop and a map link\nDONE - finish your next stop\nLATE 15 - tell dispatch you run 15 min late\nMAP APPLE or MAP GOOGLE - pick your map app\nSend a photo or a location pin at any time.';
+  }else if(cmd==='SCHEDULE'||cmd==='S'){
+    reply=routeText(t,'Your route:');
+  }else if(cmd==='NEXT'){
+    if(!t.route.length)reply='No stops left.';else{const s=t.route[0];reply='Next: '+(s.kind==='pick'?'PICK UP ':'DROP ')+s.job+' at '+stopLoc(s).name+'\n'+mapLink(t,[s]);}
+  }else if(cmd==='DONE'){
+    const s=completeNext(t,true);
+    if(!s)reply='You have no stops to finish.';else{reply=(s.kind==='pick'?'Picked up ':'Dropped ')+s.job+'. Send photos now if you have them.\n'+(t.route.length?'Next: '+(t.route[0].kind==='pick'?'PICK UP ':'DROP ')+t.route[0].job+' at '+stopLoc(t.route[0]).name+'\n'+mapLink(t,[t.route[0]]):'That was your last stop. Head back to the yard.');}
+  }else if(/^LATE\s*\d+/.test(cmd)){
+    reply='Got it. Dispatch can see you run '+cmd.replace(/\D/g,'')+' min late.';
+  }else if(cmd==='MAP APPLE'||cmd==='MAP GOOGLE'){
+    t.mapPref=cmd.endsWith('APPLE')?'apple':'google';reply='Map links will open in '+(t.mapPref==='apple'?'Apple Maps':'Google Maps')+' from now on.';
+  }else{
+    reply=null; // free text goes to dispatch only
+  }
+  if(reply)pushMsg(t.id,'hub',reply);
+}
+
+/* ---------- render: map ---------- */
+function renderMap(){
+  const svg=$('#map'),parts=[];
+  parts.push('<rect x="0" y="0" width="'+MAP_W+'" height="'+MAP_H+'" fill="var(--map)"/>');
+  // schematic highways around Maryville and Knoxville (not to exact scale)
+  const P=(pts)=>'<polyline class="road" points="'+pts.map(p=>{const q=toPx({lat:p[0],lng:p[1]});return q.x.toFixed(1)+','+q.y.toFixed(1);}).join(' ')+'"/>';
+  parts.push(P([[35.885,-84.28],[35.866,-84.20],[35.905,-84.10],[35.934,-83.99],[35.965,-83.93],[35.995,-83.85],[36.04,-83.68]])); // I-40
+  parts.push(P([[35.75,-84.28],[35.812,-84.238],[35.866,-84.20],[35.93,-84.16],[36.145,-84.12]])); // I-75
+  parts.push(P([[35.757,-83.97],[35.80,-83.975],[35.836,-83.968],[35.89,-83.955],[35.962,-83.92]])); // US-129 Alcoa Hwy
+  parts.push(P([[35.80,-83.96],[35.83,-84.02],[35.88,-84.10],[35.935,-84.14],[36.0,-84.15]])); // I-140 Pellissippi
+  parts.push(P([[35.797,-84.256],[35.765,-84.10],[35.757,-83.97],[35.70,-83.795],[35.66,-83.73]])); // US-321
+  parts.push(P([[35.757,-83.97],[35.82,-83.86],[35.886,-83.774],[35.92,-83.68]])); // US-411
+  const shield=(lbl,p)=>{const q=toPx(p);return '<g><rect class="shield" x="'+(q.x-13)+'" y="'+(q.y-8)+'" width="26" height="16" rx="3"/><text class="shield-t" x="'+q.x+'" y="'+(q.y+3.5)+'">'+lbl+'</text></g>';};
+  parts.push(shield('40',{lat:35.99,lng:-83.80}),shield('75',{lat:36.06,lng:-84.135}),shield('129',{lat:35.87,lng:-83.935}),shield('140',{lat:35.97,lng:-84.175}),shield('321',{lat:35.64,lng:-83.70}),shield('411',{lat:35.90,lng:-83.71}));
+  const town=(n,lat,lng)=>{const q=toPx({lat,lng});return '<text class="maplabel" style="font-weight:600;font-size:12px" x="'+q.x.toFixed(1)+'" y="'+q.y.toFixed(1)+'">'+n+'</text>';};
+  parts.push(town('KNOXVILLE',35.985,-83.98),town('MARYVILLE',35.735,-84.02),town('Smoky Mtns',35.60,-83.86));
+  // places
+  for(const p of PLACES){if(p.id==='yard'||p.id==='iaa')continue;const q=toPx(p);parts.push('<circle class="place" cx="'+q.x.toFixed(1)+'" cy="'+q.y.toFixed(1)+'" r="2.6"><title>'+esc(p.name)+'</title></circle>');}
+  for(const id of ['yard','iaa']){const q=toPx(PL[id]);parts.push('<rect class="yardmark" x="'+(q.x-5)+'" y="'+(q.y-5)+'" width="10" height="10" rx="1"><title>'+esc(PL[id].name)+'</title></rect><text class="maplabel" x="'+(q.x+9)+'" y="'+(q.y+4)+'">'+(id==='yard'?'Our yard':'IAA yard')+'</text>');}
+  // routes
+  const routeFor=(t,stops,cls,preview)=>{
+    if(!stops.length)return '';
+    const pts=[t.pos,...stops.map(stopLoc)].map(toPx);
+    let s='<polyline class="routeline '+cls+'" points="'+pts.map(p=>p.x.toFixed(1)+','+p.y.toFixed(1)).join(' ')+'"/>';
+    stops.forEach((st,i)=>{const p=pts[i+1],isNew=st.job==='NEW';const fill=isNew?'var(--accent)':'var(--eq-'+t.equip+')';
+      s+=(st.kind==='pick'?'<circle class="stopdot" cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="8" fill="'+fill+'"/>':'<rect class="stopdot" x="'+(p.x-7.5).toFixed(1)+'" y="'+(p.y-7.5).toFixed(1)+'" width="15" height="15" rx="2" fill="'+fill+'"/>')+'<text class="stopnum" x="'+p.x.toFixed(1)+'" y="'+p.y.toFixed(1)+'">'+(i+1)+'</text>';});
+    return s;
+  };
+  const showPreview=S.tab==='call'&&S.preview;
+  if(showPreview){
+    const t=truck(S.preview.truck);parts.push(routeFor(t,S.preview.stops,'preview',true));
+  }else{
+    const list=S.selected?[truck(S.selected)]:S.trucks;
+    for(const t of list)parts.push(routeFor(t,t.route,'eqs-'+t.equip,false));
+  }
+  // waiting jobs
+  for(const j of Object.values(S.jobs)){
+    if(j.status!=='open')continue;const q=toPx(j.pick);
+    parts.push('<rect class="jobmark'+(j.urgent?' urgent':'')+'" x="'+(q.x-5.5).toFixed(1)+'" y="'+(q.y-5.5).toFixed(1)+'" width="11" height="11" transform="rotate(45 '+q.x.toFixed(1)+' '+q.y.toFixed(1)+')"><title>'+j.id+' waiting: '+esc(j.pick.name)+'</title></rect>');
+  }
+  // draft pickup pin
+  if(S.tab==='call'&&S.draft){const q=toPx(S.draft.pick);parts.push('<path class="pinmark" d="M'+q.x+' '+q.y+' l-7 -14 a8 8 0 1 1 14 0 z"><title>New call pickup</title></path>');}
+  // trucks
+  for(const t of S.trucks){
+    const q=toPx(t.pos),sel=S.selected===t.id||(showPreview&&S.preview.truck===t.id);
+    parts.push('<g data-truck="'+t.id+'" role="button" tabindex="0" aria-label="'+esc(t.unit+', '+t.driver)+'"><circle class="truckmark eqf-'+t.equip+(sel?' sel':'')+'" cx="'+q.x.toFixed(1)+'" cy="'+q.y.toFixed(1)+'" r="12"/><text class="trucktxt" x="'+q.x.toFixed(1)+'" y="'+q.y.toFixed(1)+'">'+EQUIP[t.equip].code+'</text><text class="maplabel" x="'+(q.x+15).toFixed(1)+'" y="'+(q.y-8).toFixed(1)+'">'+esc(t.driver)+'</text></g>');
+  }
+  svg.innerHTML=parts.join('');
+  svg.classList.toggle('picking',!!S.pickMode);
+  $('#pickBanner').hidden=!S.pickMode;
+  if(S.pickMode)$('#pickText').textContent='Tap the map to set the '+(S.pickMode==='pick'?'pickup':'drop-off');
+  $('#mapTitle').textContent=showPreview?'Proposed route: '+truck(S.preview.truck).driver:(S.selected?truck(S.selected).unit+' route':'All trucks');
+  $('#showAll').hidden=!S.selected||showPreview;
+}
+
+/* ---------- render: board ---------- */
+function stopRow(t,s,i,eta,opts){
+  const j=S.jobs[s.job],loc=stopLoc(s);opts=opts||{};
+  const others=S.trucks.filter(o=>o.id!==t.id&&eligible(o,j));
+  const ctl=opts.controls?'<div class="ctl">'+
+    '<button class="iconbtn" type="button" data-up="'+t.id+':'+i+'" aria-label="Move stop up"'+(i===0?' disabled':'')+'>▲</button>'+
+    '<button class="iconbtn" type="button" data-down="'+t.id+':'+i+'" aria-label="Move stop down"'+(i===t.route.length-1?' disabled':'')+'>▼</button>'+
+    (s.kind==='pick'&&j.status==='assigned'&&others.length?'<select class="mini" data-move="'+s.job+'" aria-label="Move '+s.job+' to another truck"><option value="">Move to…</option>'+others.map(o=>'<option value="'+o.id+'">'+esc(o.driver)+' · '+EQUIP[o.equip].code+'</option>').join('')+'</select>':'')+
+    '</div>':'<div></div>';
+  return '<li class="stop'+(opts.cls?' '+opts.cls:'')+'"><span class="n'+(s.kind==='drop'?' drop':'')+'">'+(i+1)+'</span><span class="eta">'+fmtTime(eta)+'</span>'+
+    '<div class="what"><div><b>'+(s.kind==='pick'?'Pick up':'Drop')+' '+jobName(s.job)+'</b> · '+esc(loc.name)+'</div><div class="sub">'+esc(KINDS[j.kind])+(j.vehicle?' · '+esc(j.vehicle):'')+(opts.note?' · '+opts.note:'')+(j.photos?' · '+j.photos+' photo'+(j.photos>1?'s':''):'')+'</div></div>'+ctl+'</li>';
+}
+function renderBoard(){
+  const open=Object.values(S.jobs).filter(j=>j.status==='open');
+  const active=Object.values(S.jobs).filter(j=>j.id!=='NEW'&&(j.status==='assigned'||j.status==='loaded'));
+  const done=Object.values(S.jobs).filter(j=>j.status==='done');
+  const finish=Math.max(S.clock,...S.trucks.map(t=>simulate(t,t.route).finish));
+  const miles=S.trucks.reduce((a,t)=>a+simulate(t,t.route).miles,0);
+  let h='<div class="section-h"><div><h2>Board</h2><p class="lede">Every truck, its stops in order, and the jobs that still need a truck.</p></div><button class="btn primary" type="button" id="planBtn"'+(open.length?'':' disabled')+'>Plan my morning</button></div>';
+  h+='<div class="stats"><div class="card stat'+(open.length?' warn':'')+'"><div class="k">Need a truck</div><div class="v num">'+open.length+'</div></div>'+
+     '<div class="card stat"><div class="k">On routes</div><div class="v num">'+active.length+'</div></div>'+
+     '<div class="card stat"><div class="k">Done today</div><div class="v num">'+done.length+'</div></div>'+
+     '<div class="card stat"><div class="k">Miles left</div><div class="v num">'+Math.round(miles)+'</div></div>'+
+     '<div class="card stat"><div class="k">Last truck free</div><div class="v num" style="font-size:22px">'+fmtTime(finish)+'</div></div></div>';
+  h+='<div class="card queue"><div class="section-h"><h3>Waiting for a truck</h3><span class="lede">'+(open.length?'Plan them all at once, or give one job to its best truck.':'')+'</span></div>';
+  if(!open.length)h+='<div class="empty">Every job has a truck. Go get a donut. New calls wait here until you send someone.</div>';
+  for(const j of open){
+    h+='<div class="qitem"><span class="pill '+(j.urgent?'urgent':'iaa')+'">'+(j.urgent?'URGENT':esc(KINDS[j.kind]))+'</span><div class="where"><div><b>'+j.id+'</b> · '+esc(j.pick.name)+' → '+esc(j.drop.name)+'</div><div class="sub">'+esc(j.vehicle||'')+' · '+esc(NEEDS[j.needs].label)+' · '+dist(j.pick,j.drop).toFixed(1)+' mi tow</div></div><button class="btn small" type="button" data-best="'+j.id+'">Give to best truck</button></div>';
+  }
+  h+='</div>';
+  for(const t of S.trucks){
+    const sim=simulate(t,t.route),load=loadedCount(t);
+    h+='<div class="card truck'+(S.selected===t.id?' sel':'')+'" style="border-left-color:var(--eq-'+t.equip+')"><div class="truck-h"><span class="name">'+esc(t.unit)+'</span><span class="pill eq eqbg-'+t.equip+'">'+EQUIP[t.equip].label+'</span><span class="meta">'+esc(t.driver)+' · '+esc(t.phone)+' · '+(t.mapPref==='apple'?'Apple Maps':'Google Maps')+' · on board '+load+'/'+EQUIP[t.equip].cap+'</span>'+
+       '<span class="totals num">'+sim.miles.toFixed(0)+' mi · free '+fmtTime(sim.finish)+'</span></div>';
+    h+='<ul class="stops">'+(t.route.length?t.route.map((s,i)=>stopRow(t,s,i,sim.etas[i],{controls:true})).join(''):'<li class="empty">No stops. Truck is free at '+esc(t.pos.name)+'. Somebody is napping.</li>')+'</ul>';
+    h+='<div class="row"><button class="btn small" type="button" data-show="'+t.id+'">Show on map</button><button class="btn small" type="button" data-text="'+t.id+'"'+(t.route.length?'':' disabled')+'>Text route to '+esc(t.driver)+'</button><button class="btn small" type="button" data-done="'+t.id+'"'+(t.route.length?'':' disabled')+'>Mark next stop done</button></div></div>';
+  }
+  $('#view-board').innerHTML=h;
+}
+
+/* ---------- render: new call ---------- */
+function placeOptions(sel){
+  return PLACES.map(p=>'<option value="'+p.id+'"'+(sel===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'<option value="custom"'+(sel==='custom'?' selected':'')+'>Pin on map…</option>';
+}
+function renderCallForm(){
+  const d=S.draft;
+  $('#callForm').innerHTML=
+   '<div class="field"><label for="f-kind">Call type</label><select id="f-kind">'+Object.entries(KINDS).map(([k,v])=>'<option value="'+k+'"'+(d.kind===k?' selected':'')+'>'+v+'</option>').join('')+'</select></div>'+
+   '<div class="field"><label for="f-needs">Vehicle needs</label><select id="f-needs">'+Object.entries(NEEDS).map(([k,v])=>'<option value="'+k+'"'+(d.needs===k?' selected':'')+'>'+v.label+'</option>').join('')+'</select></div>'+
+   '<div class="field"><label for="f-caller">Caller</label><input type="text" id="f-caller" value="'+esc(d.caller)+'"></div>'+
+   '<div class="field"><label for="f-phone">Callback number</label><input type="tel" id="f-phone" value="'+esc(d.phone)+'"></div>'+
+   '<div class="field full"><label for="f-vehicle">Vehicle</label><input type="text" id="f-vehicle" value="'+esc(d.vehicle)+'"></div>'+
+   '<div class="field"><label for="f-pick">Pick up at</label><div class="locrow"><select id="f-pick">'+placeOptions(d.pickSel)+'</select><button class="btn small" type="button" id="pinPick">Map</button></div></div>'+
+   '<div class="field"><label for="f-drop">Drop off at</label><div class="locrow"><select id="f-drop">'+placeOptions(d.dropSel)+'</select><button class="btn small" type="button" id="pinDrop">Map</button></div></div>'+
+   '<div class="field full"><span class="lbl">Options</span><div class="checks">'+
+     '<label><input type="checkbox" id="f-urgent"'+(d.urgent?' checked':'')+'> Urgent (send the nearest truck now)</label>'+
+     '<label><input type="checkbox" id="f-after"'+(d.extras.afterHours?' checked':'')+'> After hours</label>'+
+     '<label><input type="checkbox" id="f-winch"'+(d.extras.winch?' checked':'')+'> Winching</label>'+
+     '<label><input type="checkbox" id="f-dollies"'+(d.extras.dollies?' checked':'')+'> Dollies</label></div></div>';
+}
+function readCallForm(){
+  const d=S.draft,kind=$('#f-kind').value;
+  if(kind!==d.kind&&kind==='accident')$('#f-urgent').checked=true;
+  d.kind=kind;d.needs=$('#f-needs').value;d.caller=$('#f-caller').value;d.phone=$('#f-phone').value;d.vehicle=$('#f-vehicle').value;
+  d.urgent=$('#f-urgent').checked;d.extras={afterHours:$('#f-after').checked,winch:$('#f-winch').checked,dollies:$('#f-dollies').checked};
+  const ps=$('#f-pick').value,ds=$('#f-drop').value;
+  if(ps!=='custom'){d.pick=place(ps);}else if(d.pickSel!=='custom'){S.pickMode='pick';}
+  if(ds!=='custom'){d.drop=place(ds);}else if(d.dropSel!=='custom'){S.pickMode='drop';}
+  d.pickSel=ps;d.dropSel=ds;
+}
+function draftJob(){
+  const d=S.draft;
+  return {id:'NEW',kind:d.kind,pick:d.pick,drop:d.drop,needs:d.needs,urgent:d.urgent,status:'draft',truck:null,photos:0,vehicle:d.vehicle,caller:d.caller,phone:d.phone};
+}
+function renderCallResults(){
+  const el=$('#callResults'),d=S.draft,job=draftJob();
+  S.jobs.NEW=job;
+  const ranks=rankTrucks(job);
+  if(!ranks.length){el.innerHTML='<div class="card" style="padding:14px"><h3>No truck can take this call</h3><p class="lede">No truck has the right equipment for "'+esc(NEEDS[d.needs].label)+'". Pick other vehicle needs, or refer the call out.</p></div>';S.preview=null;renderMap();return;}
+  let ci=ranks.findIndex(r=>r.t.id===d.choice);if(ci<0)ci=0;
+  const c=ranks[ci],est=estimate(job,c);
+  S.preview={truck:c.t.id,stops:c.ins.stops};
+  const lateList=Object.entries(c.ins.late);
+  let h='<div class="card quote"><div><h3>Price for the caller</h3><table class="lines">'+est.lines.map(l=>'<tr><td>'+esc(l[0])+'</td><td>'+money(l[1])+'</td></tr>').join('')+'<tr class="total"><td>Total</td><td>'+money(est.total)+'</td></tr></table>'+
+     '<div class="script">Say: "It will be about <b>'+money0(est.quote)+'</b>. '+esc(c.t.driver)+' can be there by <b>'+fmtTime(c.ins.etaPick)+'</b>, about '+Math.max(1,Math.round(c.ins.etaPick-S.clock))+' minutes."</div></div>'+
+     '<div><span class="lbl">Quote, rounded up</span><div class="bigquote num">'+money0(est.quote)+'</div>'+
+     '<div style="margin-top:10px"><div class="margin-row"><span>Extra miles for '+esc(c.t.driver)+'</span><b>'+c.ins.added.toFixed(1)+' mi</b></div>'+
+     '<div class="margin-row"><span>Fuel and wear</span><b>−'+money(est.fuelWear)+'</b></div>'+
+     '<div class="margin-row"><span>Driver pay ('+S.rates.global.commissionPct+'%)</span><b>−'+money(est.pay)+'</b></div>'+
+     '<div class="margin-row '+(est.margin>=0?'good':'bad')+'"><span>Left for the business</span><b>'+money(est.margin)+'</b></div></div></div></div>';
+  h+='<div class="card"><div style="padding:12px 12px 0"><h3>Which truck should go</h3><p class="lede">'+(d.urgent?'Urgent: ranked by how fast the truck gets to the scene.':'Not urgent: ranked by the fewest extra miles.')+' Tap a row to compare.</p></div><div class="tablewrap"><table class="rank"><thead><tr><th>Truck</th><th>At scene</th><th class="r">Extra miles</th><th>Pushes back</th><th class="r">Our cost</th></tr></thead><tbody>';
+  ranks.forEach((r,i)=>{const e=estimate(job,r),late=Object.entries(r.ins.late),max=late.length?Math.max(...late.map(x=>x[1])):0;
+    h+='<tr tabindex="0" data-choose="'+r.t.id+'" class="'+(i===ci?'chosen':'')+'"><td><b>'+esc(r.t.driver)+'</b> <span class="pill eq eqbg-'+r.t.equip+'">'+EQUIP[r.t.equip].code+'</span>'+(i===0?' <span class="pill ok">BEST</span>':'')+'<div class="lede" style="font-size:12px">'+esc(r.t.unit)+' · '+r.t.route.length+' stops now</div></td>'+
+      '<td class="num">'+fmtTime(r.ins.etaPick)+'<div class="lede" style="font-size:12px">in '+Math.max(1,Math.round(r.ins.etaPick-S.clock))+' min</div></td><td class="r num">'+r.ins.added.toFixed(1)+'</td>'+
+      '<td>'+(late.length?'<span class="pill urgent">'+late.length+' job'+(late.length>1?'s':'')+'</span> up to '+Math.round(max)+' min':'<span class="pill ok">none</span>')+'</td><td class="r num">'+money(e.fuelWear+e.pay)+'</td></tr>';});
+  h+='</tbody></table></div><div class="why">Checks every truck that has the right equipment'+(d.kind==='accident'?' (3-car haulers do not go to wreck scenes)':'')+', and every place the job can fit in its route. A 3-car hauler can carry up to 3 cars before a drop.</div></div>';
+  // before / after
+  const t=c.t;
+  h+='<div class="card diff"><div><h3>'+esc(t.driver)+' now</h3><ul class="stops">'+(t.route.length?t.route.map((s,i)=>stopRow(t,s,i,c.ins.before.etas[i])).join(''):'<li class="empty">No stops. Free at '+esc(t.pos.name)+'.</li>')+'</ul>'+
+     '<p class="delta">'+c.ins.before.miles.toFixed(1)+' mi · free at <b>'+fmtTime(c.ins.before.finish)+'</b></p></div>'+
+     '<div><h3>'+esc(t.driver)+' with this call</h3><ul class="stops">'+c.ins.stops.map((s,i)=>{const isNew=s.job==='NEW',lt=c.ins.late[s.job];return stopRow(t,s,i,c.ins.sim.etas[i],{cls:isNew?'new':(lt&&s.kind==='drop'?'late':''),note:(!isNew&&lt&&s.kind==='drop')?'+'+Math.round(lt)+' min':''});}).join('')+'</ul>'+
+     '<p class="delta">'+c.ins.sim.miles.toFixed(1)+' mi · free at <b>'+fmtTime(c.ins.sim.finish)+'</b></p></div>'+
+     '<div class="foot"><div class="delta">Change: <b>+'+c.ins.added.toFixed(1)+' mi</b>, <b>+'+Math.round(c.ins.sim.finish-c.ins.before.finish)+' min</b> to the day'+(lateList.length?', pushes back '+lateList.map(x=>x[0]).join(', '):'')+'.</div>'+
+     '<div class="row"><button class="btn" type="button" id="holdCall">Save to waiting list</button><button class="btn primary" type="button" id="assignCall">Send '+esc(t.driver)+' and text the route</button></div></div></div>';
+  el.innerHTML=h;
+  renderMap();
+}
+function commitCall(toTruck){
+  const d=S.draft,job=draftJob(),id='J'+(S.seq++);
+  delete S.jobs.NEW;job.id=id;job.status='open';S.jobs[id]=job;
+  if(toTruck){
+    const t=truck(toTruck),ins=bestInsertion(t,job,job.urgent);
+    assignJob(job,t,ins);
+    sendRoute(t,(job.urgent?'URGENT ':'')+'New job '+id+': '+(job.vehicle||'vehicle')+' at '+job.pick.name+'. Updated route:');
+    toast(id+' sent to '+t.driver+'. Route texted. Quote saved on the job.');
+  }else toast(id+' saved to the waiting list.');
+  S.draft=exampleDraftBlank();S.preview=null;
+  switchTab('board');
+}
+function exampleDraftBlank(){const d=exampleDraft();d.caller='';d.phone='';d.vehicle='';d.kind='private';d.urgent=false;d.needs='car';d.pick=place('downtown');d.pickSel='downtown';d.dropSel='yard';return d;}
+
+/* ---------- render: texts ---------- */
+function linkify(s){return esc(s).replace(/https:\/\/[^\s<]+/g,u=>'<a href="'+u+'" target="_blank" rel="noopener">'+(u.includes('apple.com')?'Open in Apple Maps':'Open in Google Maps')+'</a>');}
+function renderTexts(){
+  const t=truck(S.textTruck);delete S.unread[t.id];
+  let h='<div class="section-h"><div><h2>Driver texts</h2><p class="lede">Drivers use plain text messages. No app to install. Type as the driver to try the commands.</p></div></div><div class="texts"><div class="drivers">';
+  for(const o of S.trucks)h+='<button class="drv" type="button" data-thread="'+o.id+'" aria-pressed="'+(o.id===t.id)+'"><span>'+esc(o.driver)+'<small>'+esc(o.unit)+'</small></span>'+(S.unread[o.id]?'<span class="unread" aria-label="unread"></span>':'')+'</button>';
+  h+='</div><div class="phone"><div class="phone-h"><div><b>'+esc(t.driver)+'</b> <small>'+esc(t.phone)+'</small></div><div class="as" role="group" aria-label="Type as"><button type="button" data-as="driver" aria-pressed="'+(S.textAs==='driver')+'">As driver</button><button type="button" data-as="dispatch" aria-pressed="'+(S.textAs==='dispatch')+'">As dispatch</button></div></div><div class="thread" id="thread">';
+  if(!S.threads[t.id].length)h+='<div class="empty">No messages yet. Send the route from the Board, or type HELP as the driver.</div>';
+  for(const m of S.threads[t.id]){
+    const out=m.from==='driver',who=m.from==='hub'?'H&amp;H Bot (auto)':m.from==='dispatch'?'Dispatch':esc(t.driver);
+    h+='<div class="msg '+(out?'out':'in')+(m.from==='dispatch'?' dispatch':'')+'"><span class="who">'+who+'</span>'+(m.photo?'<img alt="Photo from driver" src="'+m.photo+'">':'')+(m.text?linkify(m.text):'')+'<time>'+fmtTime(m.time)+'</time></div>';
+  }
+  h+='</div>'+(S.textAs==='driver'?'<div class="chips">'+['HELP','SCHEDULE','NEXT','DONE','LATE 15','MAP APPLE','MAP GOOGLE'].map(c=>'<button class="chip" type="button" data-chip="'+c+'">'+c+'</button>').join('')+'</div>':'')+
+    '<form class="compose" id="compose"><input type="text" id="msgInput" aria-label="Message" placeholder="'+(S.textAs==='driver'?'Text as '+esc(t.driver)+'…':'Text to '+esc(t.driver)+'…')+'">'+
+    (S.textAs==='driver'?'<label class="btn small filebtn" title="Send a photo">Photo<input type="file" id="photoIn" accept="image/*" aria-label="Send a photo"></label><button class="btn small" type="button" id="locBtn" title="Send a location pin">Pin</button>':'')+
+    '<button class="btn small primary" type="submit">Send</button></form></div></div>';
+  $('#view-texts').innerHTML=h;
+  const th=$('#thread');th.scrollTop=th.scrollHeight;
+}
+
+/* ---------- render: rates ---------- */
+function renderRates(){
+  const r=S.rates,g=r.global;
+  let h='<div class="section-h"><div><h2>Rates</h2><p class="lede">Sample numbers. Put in your own. Quotes and costs update right away.</p></div><button class="btn small" type="button" id="ratesReset">Back to sample rates</button></div><div class="card rates"><div class="tablewrap"><table class="rt"><thead><tr><th>Truck type</th><th>Hook fee</th><th>$ per towed mile</th><th>$ per enroute mile</th><th>Free towed miles</th></tr></thead><tbody>';
+  for(const k of Object.keys(EQUIP))h+='<tr><td><span class="pill eq eqbg-'+k+'">'+EQUIP[k].label+'</span></td>'+['hook','loaded','unloaded','included'].map(f=>'<td><input type="number" step="0.25" min="0" id="r-'+k+'-'+f+'" data-rate="'+k+'.'+f+'" value="'+r[k][f]+'" aria-label="'+EQUIP[k].label+' '+f+'"></td>').join('')+'</tr>';
+  h+='</tbody></table></div><div class="grid2">';
+  const gf=[['costPerMile','Fuel and wear, $ per mile',0.05],['commissionPct','Driver pay, % of job',1],['afterHours','After-hours fee, $',5],['winch','Winching fee, $',5],['dollies','Dollies fee, $',5],['mph','Average speed, mph',1],['pickMin','Minutes at a pickup',1],['dropMin','Minutes at a drop-off',1],['roadFactor','Road miles per straight mile',0.05]];
+  for(const [f,l,st] of gf)h+='<div class="field"><label for="g-'+f+'">'+l+'</label><input type="number" step="'+st+'" min="0" id="g-'+f+'" data-rate="global.'+f+'" value="'+g[f]+'"></div>';
+  h+='<div class="field"><label for="g-billFrom">Charge enroute miles from</label><select id="g-billFrom" data-rate="global.billFrom"><option value="truck"'+(g.billFrom==='truck'?' selected':'')+'>Where the truck is</option><option value="yard"'+(g.billFrom==='yard'?' selected':'')+'>Our yard</option></select></div>';
+  h+='</div></div>';
+  $('#view-rates').innerHTML=h;
+}
+
+/* ---------- render: plan ---------- */
+function renderPlan(){
+  $('#view-plan').innerHTML='<div class="section-h"><div><h2>How it would work</h2><p class="lede">What this mock shows, what is pretend, and how the real thing gets built.</p></div></div>'+
+  '<div class="card plan">'+
+  '<div><h3>The problem</h3><p>Every morning the owner sorts IAA pickups and other jobs onto trucks by hand. Then accident calls interrupt the plan. He cannot quickly see which truck to divert, what it costs, or what price to give on the phone.</p></div>'+
+  '<div><h3>What this tool adds</h3><ul>'+
+  '<li><b>Plan my morning.</b> One button puts every waiting job on a truck that has the right equipment, with the fewest miles.</li>'+
+  '<li><b>Take a call.</b> While he talks, the tool ranks the trucks, prices the tow, and shows which other jobs get pushed back.</li>'+
+  '<li><b>Divert with one tap.</b> The driver gets a text with the new route and a map link for Google Maps or Apple Maps.</li>'+
+  '<li><b>Drivers use text messages.</b> They reply DONE, NEXT, or SCHEDULE. They text photos and location pins. No app to install.</li></ul></div>'+
+  '<div><h3>Towbook stays</h3><p>Towbook keeps doing photos, invoices, driver pay and QuickBooks. This tool reads jobs and driver locations from Towbook and sends assignments back. It needs Towbook to give API access. If there is no API, the fallback is the IAA emails and a daily export.</p></div>'+
+  '<div><h3>What is pretend in this mock</h3><ul><li>Miles are straight-line distance times a road factor. The real tool uses real road miles from a map service.</li><li>Texts appear in the phone panel only. Nothing is sent.</li><li>Trucks, jobs, rates and phone numbers are examples.</li></ul></div>'+
+  '<div><h3>Build steps</h3></div>'+
+  '<div class="phase"><span class="tag">STEP 1</span><div><b>Dispatch helper on real data.</b> Read jobs and trucks from Towbook. Real road miles. Quotes from his own rate sheet. Morning plan and call ranking.</div></div>'+
+  '<div class="phase"><span class="tag">STEP 2</span><div><b>Real texts to drivers.</b> Use a texting service (for example Twilio). US business texting needs a one-time carrier registration (called 10DLC) before messages go through. Each text costs about a cent.</div></div>'+
+  '<div class="phase"><span class="tag">STEP 3</span><div><b>Photos and pins by text.</b> Picture messages and location pins from drivers attach to the job automatically and go to Towbook.</div></div>'+
+  '<div class="phase"><span class="tag">STEP 4</span><div><b>Driver app, if needed.</b> Only if texting is not enough. Live GPS, offline photos, signatures.</div></div>'+
+  '<div><h3>Questions for the owner</h3><ul><li>Can Towbook give us API access to his account?</li><li>How does he price today: hook fee plus miles? Are enroute miles charged?</li><li>How does he pay drivers: percent, flat per job, or hourly?</li><li>Which trucks can do which jobs, and who drives what?</li></ul></div>'+
+  '</div>';
+}
+
+/* ---------- requirements: questions and answers ---------- */
+const FEATURES=[
+  ['plan','"Plan my morning" button (puts every job on a truck)'],
+  ['best','Picks the best truck when a new call comes in'],
+  ['quote','Tells you the price to give the caller'],
+  ['diff','Shows which jobs get pushed back if you divert'],
+  ['routeText','Texts the route to the driver'],
+  ['cmds','Drivers text back DONE, NEXT, SCHEDULE'],
+  ['photos','Drivers text photos and location pins'],
+  ['maps','Each driver picks Google Maps or Apple Maps'],
+  ['moveJobs','Move a job to another truck with one tap']
+];
+const RATE_OPTS=['Need it','Nice to have','Do not care'];
+const SCREEN_NAMES={board:'Board',call:'New call',texts:'Driver texts',rates:'Rates',help:'Help',plan:'How it works'};
+const QUESTIONS=[
+  {sec:'About you'},
+  {id:'name',type:'text',q:'Your name, or what the guys call you when you are not around'},
+  {id:'role',type:'choice',q:'What do you do at H&H?',opts:['Owner, the boss','Dispatch','Driver','Office and books','A little of everything']},
+  {sec:'Mornings'},
+  {id:'morningTime',type:'choice',q:'How long does it take to plan the morning now?',opts:['Under 15 min','15 to 30 min','30 to 60 min','Over an hour','I plan it in my head while I drive']},
+  {id:'interruptions',type:'choice',q:'On a normal day, how many rush calls (wrecks, police) blow up the plan?',opts:['0 to 2','3 to 5','6 to 10','More than 10','Every time I sit down']},
+  {id:'iaaSource',type:'choice',q:'How do IAA jobs get to you today?',opts:['They show up in Towbook','Email','IAA website or app','Phone call','No clue']},
+  {id:'iaaPerDay',type:'text',q:'About how many IAA pickups on a normal day?'},
+  {sec:'Trucks and drivers'},
+  {id:'trucks',type:'counts',q:'How many trucks of each type do you have?',opts:['Flatbed / rollback','Wheel-lift','3-car hauler','Heavy wrecker (semis)','Other']},
+  {id:'drivers',type:'text',q:'How many drivers? Does each one always drive the same truck?'},
+  {id:'phones',type:'choice',q:'What phones do the drivers carry?',opts:['Mostly iPhone','Mostly Android','A mix','Flip phones, God help us']},
+  {id:'appOrText',type:'choice',q:'For drivers, what is easier?',opts:['Plain text messages','An app','Either one','A phone call, like a normal person']},
+  {sec:'Money'},
+  {id:'pricing',type:'choice',q:'How do you price a cash tow on the phone?',opts:['Hook fee plus per mile','Flat price by area','A rate sheet in my head','Depends who is asking']},
+  {id:'enroute',type:'choice',q:'Do you charge for the miles driven to get to the car?',opts:['Yes','No','Sometimes','Only if they are rude']},
+  {id:'pay',type:'choice',q:'How do you pay drivers?',opts:['Percent of the job','Flat amount per job','Hourly','A mix','Beer and promises']},
+  {id:'quickbooks',type:'choice',q:'Which QuickBooks do you use?',opts:['QuickBooks Online','QuickBooks Desktop','Not sure, ask whoever does the books']},
+  {sec:'Rate what you just saw'},
+  {id:'features',type:'rate',q:'For each part of this tool, how bad do you want it?'},
+  {sec:'Straight talk'},
+  {id:'headache',type:'long',q:'What is the biggest pain in your day? Go ahead and vent. We can take it.'},
+  {id:'missing',type:'long',q:'What is missing from this tool?'},
+  {id:'dealbreaker',type:'long',q:'What would make you throw this thing out the truck window?'},
+  {id:'other',type:'long',q:'Anything else? Dirty jokes count.'}
+];
+function newId(){return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function loadDraft(){try{const v=JSON.parse(localStorage.getItem('hh-draft')||'{}');return v&&typeof v==='object'?v:{};}catch(e){return {};}}
+function saveDraft(){try{localStorage.setItem('hh-draft',JSON.stringify(ANS));}catch(e){}}
+function loadRespId(){try{let id=localStorage.getItem('hh-id');if(!id){id=newId();localStorage.setItem('hh-id',id);}return id;}catch(e){return newId();}}
+let ANS=loadDraft(),RESP=[],respState='loading',DB=null;const RESP_ID=loadRespId();
+
+function qHtml(q){
+  if(q.sec)return '<h3>'+esc(q.sec)+'</h3>';
+  let h='<div class="q"><span class="qt" id="qt-'+q.id+'">'+esc(q.q)+'</span>';
+  const v=ANS[q.id];
+  if(q.type==='text')h+='<input type="text" id="a-'+q.id+'" data-ans="'+q.id+'" aria-labelledby="qt-'+q.id+'" value="'+esc(v||'')+'">';
+  else if(q.type==='long')h+='<textarea id="a-'+q.id+'" data-ans="'+q.id+'" aria-labelledby="qt-'+q.id+'">'+esc(v||'')+'</textarea>';
+  else if(q.type==='choice')h+='<div class="opts" role="group" aria-labelledby="qt-'+q.id+'">'+q.opts.map(o=>'<button type="button" class="opt" data-pick="'+q.id+'|'+esc(o)+'" aria-pressed="'+(v===o)+'">'+esc(o)+'</button>').join('')+'</div>';
+  else if(q.type==='counts'){const c=v||{};h+='<div class="counts">'+q.opts.map((o,i)=>'<label for="c-'+q.id+'-'+i+'">'+esc(o)+'<input type="number" min="0" max="99" id="c-'+q.id+'-'+i+'" data-count="'+q.id+'|'+esc(o)+'" value="'+(c[o]!=null?c[o]:'')+'"></label>').join('')+'</div>';}
+  else if(q.type==='rate'){const r=v||{};h+=FEATURES.map(([k,l])=>'<div class="rate"><span>'+esc(l)+'</span><div class="opts" role="group" aria-label="'+esc(l)+'">'+RATE_OPTS.map(o=>'<button type="button" class="opt" data-frate="'+k+'|'+o+'" aria-pressed="'+(r[k]===o)+'">'+o+'</button>').join('')+'</div></div>').join('');}
+  return h+'</div>';
+}
+function renderAsk(){
+  let h='<div class="section-h"><div><h2>Tell us what you need</h2><p class="lede">About 5 minutes. Skip anything you want. There are no wrong answers, except "it is fine the way it is."</p></div></div>';
+  h+='<div class="card ask">'+QUESTIONS.map(qHtml).join('')+
+    '<div class="savebar"><button class="btn primary" type="button" id="saveAns">Save my answers</button><button class="btn" type="button" id="copyAns">Copy my answers</button><span class="msg-s" id="saveMsg" role="status"></span></div>'+
+    '<textarea id="copyBox" readonly hidden aria-label="Your answers as text" style="width:100%;min-height:160px;font-family:var(--font-mono);font-size:12px"></textarea></div>';
+  h+='<div id="tally"></div>';
+  $('#view-ask').innerHTML=h;
+  renderAskStatus();renderTally();
+}
+function renderAskStatus(){
+  const m=$('#saveMsg');if(!m||m.dataset.locked)return;
+  m.textContent=respState==='off'?'Saving is off on this link. Tap "Copy my answers" and text them to whoever sent you this.':respState==='slow'?'Cannot reach the answer box yet. Your answers stay on this device. You can also copy them.':'Your answers save for everyone who helps plan this.';
+}
+function answersText(){
+  const out=['H&H dispatch tool: answers'+(ANS.name?' from '+ANS.name:'')];
+  for(const q of QUESTIONS){
+    if(q.sec){out.push('','== '+q.sec+' ==');continue;}
+    const v=ANS[q.id];
+    if(q.type==='counts'){const c=v||{};out.push(q.q+': '+(Object.keys(c).length?Object.entries(c).map(([k,n])=>k+' '+n).join(', '):'-'));}
+    else if(q.type==='rate'){out.push(q.q);const r=v||{};for(const [k,l] of FEATURES)out.push('  '+l+': '+(r[k]||'-'));}
+    else out.push(q.q+': '+(v||'-'));
+  }
+  const sv=ANS.screenVotes||{};if(Object.keys(sv).length){out.push('','== Screen votes ==');for(const [s,x] of Object.entries(sv))out.push(SCREEN_NAMES[s]+': '+(x.vote||'-')+(x.note?' ('+x.note+')':''));}
+  return out.join('\n');
+}
+async function saveAnswers(){
+  const m=$('#saveMsg')||{};saveDraft();
+  if(!DB){if(m.textContent!==undefined)m.textContent='Saving is off on this link. Tap "Copy my answers" and text them to whoever sent you this.';return false;}
+  if(m.textContent!==undefined)m.textContent='Saving…';
+  try{
+    await DB.collection('responses').doc(RESP_ID).set(Object.assign({},ANS,{updatedAt:new Date().toISOString()}));
+    if(m.textContent!==undefined)m.textContent='Saved. Thanks. You may now go back to doing nothing.';return true;
+  }catch(e){
+    if(m.textContent!==undefined)m.textContent=(e&&e.code==='invalid_argument')?'This link does not let you save. Tap "Copy my answers" and text them in.':'Could not save right now. Try again in a minute, or copy your answers.';
+    return false;
+  }
+}
+function renderTally(){
+  const el=$('#tally');if(!el)return;
+  const rs=RESP.filter(r=>r.id!==undefined);
+  if(!rs.length){el.innerHTML=respState==='off'?'':'<div class="card tally"><h3>Answers so far</h3><p class="lede">Nobody has saved answers yet. Be the first. Somebody has to be.</p></div>';return;}
+  let h='<div class="card tally"><h3>Answers so far: '+rs.length+' '+(rs.length===1?'person':'people')+'</h3><p class="lede">Green is "Need it". Yellow is "Nice to have".</p>';
+  for(const [k,l] of FEATURES){
+    let need=0,nice=0;rs.forEach(r=>{const v=(r.features||{})[k];if(v==='Need it')need++;else if(v==='Nice to have')nice++;});
+    h+='<div class="bar"><span>'+esc(l)+'</span><div class="track" aria-hidden="true"><i class="need" style="width:'+(need/rs.length*100)+'%"></i><i class="nice" style="width:'+(nice/rs.length*100)+'%"></i></div><span class="num">'+need+' need · '+nice+' nice</span></div>';
+  }
+  const said=[];rs.forEach(r=>['headache','missing','dealbreaker'].forEach(f=>{if(r[f])said.push('<li><b>'+esc(r.name||'Someone')+'</b> ('+({headache:'pain',missing:'missing',dealbreaker:'deal-breaker'})[f]+'): '+esc(r[f])+'</li>');}));
+  if(said.length)h+='<h3 style="margin-top:8px">What people said</h3><ul class="quotes">'+said.join('')+'</ul>';
+  el.innerHTML=h+'</div>';
+}
+function renderVote(){
+  const el=$('#screenVote'),scr=S.tab;
+  if(scr==='ask'){el.hidden=true;return;}
+  el.hidden=false;
+  const v=((ANS.screenVotes||{})[scr])||{};
+  el.innerHTML='<span class="lbl">Does the '+esc(SCREEN_NAMES[scr])+' screen help you?</span><div class="opts">'+['Yes, keep it','Kind of','Nope, junk'].map(o=>'<button type="button" class="opt" data-vote="'+o+'" aria-pressed="'+(v.vote===o)+'">'+o+'</button>').join('')+'</div>'+
+    '<div class="row"><input type="text" id="voteNote" aria-label="What would make this screen better" placeholder="What would make it better? Be honest. Be rude if you need to." value="'+esc(v.note||'')+'"><button class="btn small" type="button" id="voteSend">Send</button></div>';
+}
+function setScreenVote(patch){
+  ANS.screenVotes=ANS.screenVotes||{};
+  ANS.screenVotes[S.tab]=Object.assign({},ANS.screenVotes[S.tab]||{},patch);
+  saveDraft();
+}
+async function connectAnswers(){
+  try{DB=(window.claude&&typeof window.claude.use==='function')?await window.claude.use('db'):null;}catch(e){DB=null;}
+  if(!DB){respState='off';renderAskStatus();renderTally();return;}
+  const timer=setTimeout(()=>{if(respState==='loading'){respState='slow';renderAskStatus();}},10000);
+  DB.collection('responses').onSnapshot(snap=>{
+    RESP=snap.docs.map(d=>Object.assign({},d.data(),{id:d.id}));
+    if(!snap.metadata.fromCache)clearTimeout(timer);
+    respState='ready';
+    const mine=RESP.find(r=>r.id===RESP_ID);
+    if(mine&&!Object.keys(ANS).length){ANS=Object.assign({},mine);delete ANS.id;delete ANS.updatedAt;if(S.tab==='ask')renderAsk();renderVote();}
+    renderAskStatus();renderTally();
+  },()=>{clearTimeout(timer);respState='off';renderAskStatus();renderTally();});
+}
+
+/* ---------- help ---------- */
+function renderHelp(){
+  $('#view-help').innerHTML='<div class="section-h"><div><h2>Help</h2><p class="lede">If you can back a rollback down a ditch at 2 AM, you can run this. Promise.</p></div></div>'+
+  '<div class="card help">'+
+  '<div><h3>What is this?</h3><p>A helper for dispatch. It answers three questions fast. Which truck goes? What do I charge? What happens to everybody else\'s day? Towbook still does the photos, the bills and the pay.</p></div>'+
+  '<div><h3>Try it in one minute</h3><ol>'+
+    '<li>On <b>Board</b>, tap <b>Plan my morning</b>. Every waiting job gets a truck.</li>'+
+    '<li>Go to <b>New call</b>. Tap <b>Simulate an accident call</b>.</li>'+
+    '<li>Read the price and the "Say:" line out loud to the caller. Look smart.</li>'+
+    '<li>Tap <b>Send</b> on the best truck. The driver gets a text with the new route.</li>'+
+    '<li>Go to <b>Driver texts</b>. Pick that driver. Tap <code>DONE</code> like you are the driver.</li></ol></div>'+
+  '<div><h3>The screens</h3><dl>'+
+    '<dt>Board</dt><dd>Every truck and its stops, in order. Use the arrows to change the order. Use "Move to…" to give a job to another truck.</dd>'+
+    '<dt>New call</dt><dd>Fill it in while you talk. The best truck, the price, and who gets pushed back all change as you type.</dd>'+
+    '<dt>Driver texts</dt><dd>What the drivers see on their phones. Plain texts. No app.</dd>'+
+    '<dt>Rates</dt><dd>Your prices. Change them and every quote changes.</dd>'+
+    '<dt>Tell us what you need</dt><dd>The questions. This is the part that matters. Please fill it in.</dd></dl></div>'+
+  '<div><h3>What drivers can text back</h3><dl>'+
+    '<dt><code>SCHEDULE</code></dt><dd>Sends the whole route for the day.</dd>'+
+    '<dt><code>NEXT</code></dt><dd>Sends the next stop and a map link.</dd>'+
+    '<dt><code>DONE</code></dt><dd>Marks the stop finished and sends the next one.</dd>'+
+    '<dt><code>LATE 15</code></dt><dd>Tells dispatch you run 15 minutes late. Any number works.</dd>'+
+    '<dt><code>MAP APPLE</code></dt><dd>Map links open in Apple Maps. <code>MAP GOOGLE</code> switches back.</dd>'+
+    '<dt>A photo</dt><dd>Goes on the job you are working.</dd>'+
+    '<dt>A location pin</dt><dd>Moves your truck on the dispatch map.</dd>'+
+    '<dt><code>HELP</code></dt><dd>Sends this list. For when you forget. Which you will.</dd></dl></div>'+
+  '<div><h3>Words on the screen</h3><dl>'+
+    '<dt>Hook fee</dt><dd>The flat price just for hooking up.</dd>'+
+    '<dt>Enroute miles</dt><dd>Miles to get to the car, with nothing on the truck.</dd>'+
+    '<dt>Towed miles</dt><dd>Miles with the car on the truck.</dd>'+
+    '<dt>Extra miles</dt><dd>How many more miles a truck drives if it takes this job.</dd>'+
+    '<dt>Pushes back</dt><dd>Jobs that will be late if this truck takes the new call.</dd>'+
+    '<dt>Left for the business</dt><dd>The price, minus fuel and wear, minus the driver\'s cut.</dd></dl></div>'+
+  '<div class="faq"><h3>Questions people ask</h3><ul>'+
+    '<li><b>Can I break it?</b>No. It is all fake. Tap <b>Reset demo</b> at the top and it starts over. Unlike the winch on truck 3.</li>'+
+    '<li><b>Did that text really go to my driver?</b>No. Nothing leaves this page. Your drivers are safe from your typing.</li>'+
+    '<li><b>Are the miles right?</b>Close, not exact. The real version uses real road miles.</li>'+
+    '<li><b>Will this replace the dispatcher?</b>No. It cannot drive, cannot argue with a cop, and cannot find the good gas station bathroom.</li>'+
+    '<li><b>Why do my answers say "saving is off"?</b>Your link may not allow saving. Tap <b>Copy my answers</b> and text them to whoever sent you this.</li>'+
+    '<li><b>Do drivers need a new app?</b>No. It works with plain texts. An app comes later, only if you want one.</li></ul></div>'+
+  '</div>';
+}
+
+/* ---------- tabs and wiring ---------- */
+function switchTab(tab){
+  S.tab=tab;S.pickMode=null;
+  if(tab!=='call'){delete S.jobs.NEW;S.preview=null;}
+  document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===tab)));
+  for(const v of ['board','call','texts','rates','help','ask','plan'])$('#view-'+v).hidden=v!==tab;
+  if(tab==='ask')renderAsk();
+  renderAll();
+}
+function renderTabsBadge(){
+  const n=Object.keys(S.unread).length,b=$('#tab-texts');
+  b.innerHTML='Driver texts'+(n?'<span class="dot">'+n+'</span>':'');
+}
+function renderAll(){
+  $('#clock').textContent=fmtTime(S.clock);
+  if(S.tab==='board')renderBoard();
+  if(S.tab==='call'){if(!$('#f-kind'))renderCallForm();renderCallResults();}
+  if(S.tab==='texts')renderTexts();
+  if(S.tab==='rates')renderRates();
+  if(S.tab==='plan')renderPlan();
+  if(S.tab==='help')renderHelp();
+  renderVote();
+  renderTabsBadge();
+  renderMap();
+}
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button,[data-truck],tr[data-choose]');if(!b)return;
+  if(b.classList.contains('tab')){switchTab(b.dataset.tab);return;}
+  if(b.dataset.goto){switchTab(b.dataset.goto);window.scrollTo(0,0);return;}
+  if(b.dataset.pick){const i=b.dataset.pick.indexOf('|'),id=b.dataset.pick.slice(0,i),v=b.dataset.pick.slice(i+1);
+    ANS[id]=ANS[id]===v?undefined:v;saveDraft();
+    b.parentNode.querySelectorAll('.opt').forEach(o=>o.setAttribute('aria-pressed',String(o===b&&ANS[id]===v)));return;}
+  if(b.dataset.frate){const [k,v]=b.dataset.frate.split('|');ANS.features=ANS.features||{};
+    ANS.features[k]=ANS.features[k]===v?undefined:v;saveDraft();
+    b.parentNode.querySelectorAll('.opt').forEach(o=>o.setAttribute('aria-pressed',String(o===b&&ANS.features[k]===v)));return;}
+  if(b.dataset.vote){const v=b.dataset.vote,cur=((ANS.screenVotes||{})[S.tab]||{}).vote;setScreenVote({vote:cur===v?'':v});renderVote();return;}
+  if(b.id==='voteSend'){setScreenVote({note:$('#voteNote').value});saveAnswers().then(ok=>toast(ok?'Got it. Your note on '+SCREEN_NAMES[S.tab]+' is saved.':'Kept on this device. Add it to "Tell us what you need" and copy your answers to send them.'));return;}
+  if(b.id==='saveAns'){saveAnswers();return;}
+  if(b.id==='copyAns'){
+    const text=answersText(),box=$('#copyBox'),m=$('#saveMsg');
+    const fallback=()=>{box.value=text;box.hidden=false;box.focus();box.select();m.textContent='Copy did not work here. The text is in the box below. Select it and copy it.';};
+    try{navigator.clipboard.writeText(text).then(()=>{m.textContent='Copied. Paste it into a text to whoever sent you this.';},fallback);}catch(err){fallback();}
+    return;}
+  if(b.id==='resetBtn'){S=freshState();seedThreads();$('#callForm').innerHTML='';switchTab('board');toast('Demo reset to the morning start.');return;}
+  if(b.id==='planBtn'){planMorning();return;}
+  if(b.id==='showAll'){S.selected=null;renderAll();return;}
+  if(b.id==='pickCancel'){S.pickMode=null;renderMap();return;}
+  if(b.id==='simAccident'){
+    const spot=HIGHWAY_SPOTS[Math.floor(Math.random()*HIGHWAY_SPOTS.length)];
+    const cars=['2015 Ford Fusion, airbags out','2019 Chevy Equinox, wheel broken','2013 Toyota Camry, front-end damage','2021 Hyundai Tucson, rear-ended'];
+    S.draft=Object.assign(exampleDraft(),{pick:place(spot),pickSel:spot,vehicle:cars[Math.floor(Math.random()*cars.length)],caller:'State police dispatch (example)',phone:'(865) 555-0177',choice:null});
+    renderCallForm();renderCallResults();toast('Accident call loaded. The best truck is already picked.');return;
+  }
+  if(b.id==='pinPick'||b.id==='pinDrop'){S.pickMode=b.id==='pinPick'?'pick':'drop';renderMap();return;}
+  if(b.id==='assignCall'){commitCall(S.preview&&S.preview.truck);return;}
+  if(b.id==='holdCall'){commitCall(null);return;}
+  if(b.id==='locBtn'){const t=truck(S.textTruck);const p={lat:t.pos.lat+(Math.random()-.5)*0.01,lng:t.pos.lng+(Math.random()-.5)*0.01};driverSays(t,'[Location pin] https://maps.google.com/?q='+coord(p),{loc:p});renderAll();return;}
+  if(b.id==='ratesReset'){S.rates=JSON.parse(JSON.stringify(DEFAULT_RATES));renderAll();toast('Sample rates restored.');return;}
+  if(b.dataset.best){assignBest(b.dataset.best);return;}
+  if(b.dataset.show){S.selected=b.dataset.show;renderAll();return;}
+  if(b.dataset.text){const t=truck(b.dataset.text);sendRoute(t,'Your route:');toast('Route texted to '+t.driver+'.');renderAll();return;}
+  if(b.dataset.done){const t=truck(b.dataset.done),s=completeNext(t,false);if(s)toast((s.kind==='pick'?'Picked up ':'Dropped ')+s.job+'. Clock moved to '+fmtTime(S.clock)+'.');renderAll();return;}
+  if(b.dataset.up){const [tid,i]=b.dataset.up.split(':');moveStop(truck(tid),+i,-1);return;}
+  if(b.dataset.down){const [tid,i]=b.dataset.down.split(':');moveStop(truck(tid),+i,1);return;}
+  if(b.dataset.thread){S.textTruck=b.dataset.thread;renderAll();return;}
+  if(b.dataset.as){S.textAs=b.dataset.as;renderAll();return;}
+  if(b.dataset.chip){driverSays(truck(S.textTruck),b.dataset.chip);renderAll();return;}
+  if(b.dataset.choose){S.draft.choice=b.dataset.choose;renderCallResults();return;}
+  if(b.dataset.truck&&!S.pickMode){S.selected=S.selected===b.dataset.truck?null:b.dataset.truck;if(S.tab==='call')switchTab('board');else renderAll();return;}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;
+  const r=e.target.closest('tr[data-choose],g[data-truck]');if(!r)return;
+  e.preventDefault();r.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+});
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.dataset.move){if(el.value)moveJob(el.dataset.move,el.value);return;}
+  if(el.dataset.rate){const [k,f]=el.dataset.rate.split('.');S.rates[k][f]=f==='billFrom'?el.value:Math.max(0,parseFloat(el.value)||0);toast('Rate saved for this session.');return;}
+  if(el.id==='photoIn'&&el.files&&el.files[0]){
+    const fr=new FileReader();fr.onload=()=>{driverSays(truck(S.textTruck),'',{photo:fr.result});renderAll();};fr.readAsDataURL(el.files[0]);return;
+  }
+  if(el.closest('#callForm')){readCallForm();S.draft.choice=null;renderCallResults();}
+});
+document.addEventListener('input',e=>{
+  const el=e.target;
+  if(el.closest('#callForm')&&el.type==='text'){readCallForm();return;}
+  if(el.dataset.ans){ANS[el.dataset.ans]=el.value;saveDraft();return;}
+  if(el.dataset.count){const i=el.dataset.count.indexOf('|'),id=el.dataset.count.slice(0,i),k=el.dataset.count.slice(i+1);ANS[id]=ANS[id]||{};
+    if(el.value==='')delete ANS[id][k];else ANS[id][k]=Math.max(0,parseInt(el.value,10)||0);saveDraft();return;}
+  if(el.id==='voteNote'){setScreenVote({note:el.value});}
+});
+document.addEventListener('submit',e=>{
+  if(e.target.id==='callForm'){e.preventDefault();return;}
+  if(e.target.id!=='compose')return;
+  e.preventDefault();const v=$('#msgInput').value.trim();if(!v)return;const t=truck(S.textTruck);
+  if(S.textAs==='driver')driverSays(t,v);else pushMsg(t.id,'dispatch',v);
+  renderAll();const i=$('#msgInput');if(i)i.focus();
+});
+$('#map').addEventListener('click',e=>{
+  if(!S.pickMode)return;
+  e.stopPropagation();
+  const svg=$('#map'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;
+  const p=pt.matrixTransform(svg.getScreenCTM().inverse()),ll=fromPx(p.x,p.y);
+  const loc={name:'Pin '+ll.lat.toFixed(3)+', '+ll.lng.toFixed(3),lat:ll.lat,lng:ll.lng};
+  if(S.pickMode==='pick'){S.draft.pick=loc;S.draft.pickSel='custom';}else{S.draft.drop=loc;S.draft.dropSel='custom';}
+  S.pickMode=null;S.draft.choice=null;renderCallForm();renderCallResults();
+});
+// When Rates inputs change, re-render the board numbers on next view; quotes recalc on the call tab.
+
+function seedThreads(){
+  const t3=truck('T3'),t5=truck('T5');
+  S.clock=7*60+5;
+  sendRoute(t3,'Good morning Sam. Your route:');
+  sendRoute(t5,'Good morning Lou. Your route:');
+  S.clock=7*60+22;
+  pushMsg('T3','driver','Running about 10 late, traffic on 70.');
+  S.clock=7*60+30;
+}
+
+S=freshState();seedThreads();
+switchTab('board');
+connectAnswers();
+</script>
+
+</body>
+
+</html>
