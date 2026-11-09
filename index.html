@@ -751,9 +751,9 @@ async function initRealMap(){
     window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
     LLAYER=window.L.layerGroup().addTo(map);
     map.on('click',e=>{if(S.pickMode)setPinAt(e.latlng.lat,e.latlng.lng);});
-    LMAP=map;$('#map').hidden=true;
+    LMAP=map;$('#map').setAttribute('hidden','');
     renderMap();
-  }catch(e){LMAP=null;div.remove();$('#map').hidden=false;renderMap();}
+  }catch(e){LMAP=null;div.remove();$('#map').removeAttribute('hidden');renderMap();}
 }
 function routeGeom(pts){
   const key=pts.map(p=>p.lat.toFixed(5)+','+p.lng.toFixed(5)).join(';');
