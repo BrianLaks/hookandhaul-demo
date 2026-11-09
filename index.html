@@ -891,7 +891,7 @@ function saveDraft(){try{localStorage.setItem('hh-draft',JSON.stringify(ANS));}c
 function loadRespId(){try{let id=localStorage.getItem('hh-id');if(!id){id=newId();localStorage.setItem('hh-id',id);}return id;}catch(e){return newId();}}
 let ANS=loadDraft(),RESP=[],respState='loading',DB=null;const RESP_ID=loadRespId();
 // Web address of the Google Sheet receiver (apps-script/Code.gs). Empty means answers go out by "Copy my answers" only.
-const SHEET_URL='';
+const SHEET_URL='https://script.google.com/macros/s/AKfycbxo88c8LrapSUoDJrtLW5lqdxnWVWBpDplzuq2KxlbZfoudTHifT3rSdQPolsdEbqNqGg/exec';
 
 function qHtml(q){
   if(q.sec)return '<h3>'+esc(q.sec)+'</h3>';

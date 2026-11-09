@@ -15,6 +15,6 @@ Live: https://brianlaks.github.io/hookandhaul-demo/
 6. Google asks for permission. Click **Authorize access** and pick your account.
    If you see "Google hasn't verified this app", click **Advanced → Go to (project name)**. It is your own script.
 7. Copy the **Web app URL** (it ends in `/exec`).
-8. Put it in `index.html` at `const SHEET_URL='';` and push.
+8. Put it in `index.html` at `const SHEET_URL=...` and push. (Done: the live page uses it.)
 
 Each person gets one row. If they save again, their row updates. Feature ratings show as columns like `features.plan`.
