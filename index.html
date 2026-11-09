@@ -286,6 +286,29 @@ table.rt input{width:84px;border:1px solid var(--line);border-radius:4px;padding
 .eqf-flatbed{fill:var(--eq-flatbed)} .eqf-wheellift{fill:var(--eq-wheellift)} .eqf-carrier{fill:var(--eq-carrier)} .eqf-heavy{fill:var(--eq-heavy)}
 .eqs-flatbed{stroke:var(--eq-flatbed)} .eqs-wheellift{stroke:var(--eq-wheellift)} .eqs-carrier{stroke:var(--eq-carrier)} .eqs-heavy{stroke:var(--eq-heavy)}
 .pinmark{fill:var(--accent);stroke:var(--ink);stroke-width:1.5}
+/* Truck day panel */
+.day{padding:12px;display:flex;flex-direction:column;gap:8px;margin-top:12px;border-left-width:4px}
+.day-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.day-h .name{font-family:var(--font-display);font-size:20px;font-weight:600}
+.day-h .x{margin-left:auto}
+.day-now{font-size:13.5px}
+.day-now b{font-weight:600}
+.day-nums{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted)}
+.day-nums b{color:var(--ink);font-family:var(--font-mono);font-weight:500}
+.lasttext{font-size:12.5px;background:var(--surface-2);border:1px solid var(--line);border-radius:4px;padding:5px 8px}
+.tl{list-style:none;margin:0;padding:0;max-height:260px;overflow-y:auto}
+.tl li{display:grid;grid-template-columns:22px 62px minmax(0,1fr);gap:8px;align-items:center;padding:5px 4px;border-top:1px dashed var(--line);font-size:13px;cursor:pointer}
+.tl li:hover{background:var(--surface-2)}
+.tl li.done{color:var(--muted)}
+.tl li.next{background:var(--accent-soft)}
+.tl .mk{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;background:var(--surface-2);border:1px solid var(--line)}
+.tl li.done .mk{background:var(--ok);border-color:var(--ok);color:#fff}
+.tl .t{font-family:var(--font-mono);font-size:12px}
+.tl .w{min-width:0}
+.tl .w div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl .w small{color:var(--muted)}
+.lm-done{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;font:700 11px var(--font-body);display:grid;place-items:center;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.lm-done.small{width:13px;height:13px;font-size:8px;opacity:.85}
 /* Leaflet street map */
 #lmap{width:100%;height:min(72vh,620px);border-radius:4px;background:var(--map);z-index:0}
 @media (max-width:920px){#lmap{height:420px}}
@@ -339,6 +362,7 @@ table.rt input{width:84px;border:1px solid var(--line);border-radius:4px;padding
       </div>
       <div class="legend" id="milesNote"></div>
     </div>
+    <div class="card day" id="dayCard" hidden></div>
   </section>
 
   <section class="panel">
@@ -433,6 +457,7 @@ function freshState(){
     mk('J109','private','wattrd','louisville','semi',{vehicle:'Freightliner Cascadia, blown turbo',status:'assigned',truck:'T5'}),
     mk('J110','private','walland','sevier','car-flat',{vehicle:'2011 Audi A4 quattro'})
   ].forEach(j=>jobs[j.id]=j);
+  trucks.forEach(t=>{t.start=Object.assign({},t.pos);t.done=[];});
   trucks[2].route=[{job:'J108',kind:'pick'},{job:'J108',kind:'drop'}];
   trucks[4].route=[{job:'J109',kind:'pick'},{job:'J109',kind:'drop'}];
   const threads={T1:[],T2:[],T3:[],T4:[],T5:[]};
@@ -619,6 +644,7 @@ function completeNext(t,fromText){
   const sim=simulate(t,t.route),s=t.route[0],j=S.jobs[s.job],g=S.rates.global;
   S.clock=Math.max(S.clock,sim.etas[0]+(s.kind==='pick'?g.pickMin:g.dropMin));
   t.pos=Object.assign({},stopLoc(s));t.route.shift();
+  t.done.push({job:s.job,kind:s.kind,at:S.clock,loc:Object.assign({},t.pos),via:fromText?'text':'dispatch'});
   if(s.kind==='pick')j.status='loaded';else j.status='done';
   if(!fromText)pushMsg(t.id,'dispatch','Dispatch marked '+(s.kind==='pick'?'pickup':'drop-off')+' of '+s.job+' done.');
   return s;
@@ -706,6 +732,8 @@ function renderMap(){
     const list=S.selected?[truck(S.selected)]:S.trucks;
     for(const t of list)parts.push(routeFor(t,t.route,'eqs-'+t.equip,false));
   }
+  // finished stops
+  if(!showPreview)for(const t of (S.selected?[truck(S.selected)]:S.trucks))for(const d of t.done){const q=toPx(d.loc);parts.push('<circle cx="'+q.x.toFixed(1)+'" cy="'+q.y.toFixed(1)+'" r="7" fill="var(--ok)" stroke="var(--surface)" stroke-width="1.5"><title>Done '+fmtTime(d.at)+': '+d.job+' ('+esc(t.driver)+')</title></circle><text class="stopnum" x="'+q.x.toFixed(1)+'" y="'+q.y.toFixed(1)+'">✓</text>');}
   // waiting jobs
   for(const j of Object.values(S.jobs)){
     if(j.status!=='open')continue;const q=toPx(j.pick);
@@ -721,7 +749,41 @@ function renderMap(){
   svg.innerHTML=parts.join('');
   mapChrome();
 }
+/* ---------- one truck's day ---------- */
+function selectTruck(id,keep){
+  const t=truck(id);
+  if(S.tab==='call'){
+    const job=S.jobs.NEW;
+    if(job&&eligible(t,job)){S.draft.choice=id;renderCallResults();}
+    else toast(t.driver+' cannot take this call. A '+EQUIP[t.equip].label.toLowerCase()+' is the wrong truck for it.');
+    return;
+  }
+  S.selected=(S.selected===id&&!keep)?null:id;S.fitPending=true;renderAll();
+}
+function stopWords(kind){return kind==='pick'?'Pick up':'Drop';}
+function renderDay(){
+  const el=$('#dayCard'),t=S.selected&&S.tab!=='call'?truck(S.selected):null;
+  if(!t){el.hidden=true;return;}
+  el.hidden=false;el.style.borderLeftColor='var(--eq-'+t.equip+')';
+  const sim=simulate(t,t.route);
+  let drove=0,prev=t.start;for(const d of t.done){drove+=dist(prev,d.loc);prev=d.loc;}
+  const next=t.route[0];
+  const now=next?'Heading to <b>'+stopWords(next.kind).toLowerCase()+' '+next.job+'</b> at '+esc(stopLoc(next).name)+'. Gets there about <b>'+fmtTime(sim.etas[0])+'</b>.'
+    :(t.done.length?'<b>All stops done.</b> Free at '+esc(t.pos.name)+'. Probably at the gas station "checking the tires".':'<b>No stops today.</b> Free at '+esc(t.pos.name)+'.');
+  const lastIn=[...S.threads[t.id]].reverse().find(m=>m.from==='driver');
+  let h='<div class="day-h"><span class="name">'+esc(t.driver)+'\'s day</span><span class="pill eq eqbg-'+t.equip+'">'+esc(t.unit)+'</span><span class="lede" style="font-size:12.5px">'+esc(t.phone)+'</span><button class="btn small ghost x" type="button" data-unselect="1" aria-label="Close this truck\'s day">Close</button></div>';
+  h+='<div class="day-now">'+now+'</div>';
+  h+='<div class="day-nums"><span>Done <b>'+t.done.length+'</b></span><span>Left <b>'+t.route.length+'</b></span><span>Drove <b>'+drove.toFixed(0)+' mi</b></span><span>To go <b>'+sim.miles.toFixed(0)+' mi</b></span><span>Free about <b>'+fmtTime(sim.finish)+'</b></span></div>';
+  if(lastIn)h+='<div class="lasttext">Last text from '+esc(t.driver)+' at '+fmtTime(lastIn.time)+': "'+esc(lastIn.photo?'[photo]':lastIn.text)+'"</div>';
+  h+='<ul class="tl">';
+  h+='<li class="done" data-focus="'+t.start.lat+','+t.start.lng+'"><span class="mk">●</span><span class="t">'+fmtTime(7*60)+'</span><div class="w"><div>Started at '+esc(t.start.name)+'</div></div></li>';
+  for(const d of t.done){const j=S.jobs[d.job];h+='<li class="done" data-focus="'+d.loc.lat+','+d.loc.lng+'"><span class="mk">✓</span><span class="t">'+fmtTime(d.at)+'</span><div class="w"><div>'+stopWords(d.kind)+' '+d.job+' · '+esc(d.loc.name)+'</div><small>'+(d.via==='text'?'Driver texted DONE':'Marked done by dispatch')+(j&&j.photos?' · '+j.photos+' photo'+(j.photos>1?'s':''):'')+'</small></div></li>';}
+  t.route.forEach((s,i)=>{const p=stopLoc(s),j=S.jobs[s.job];h+='<li class="'+(i===0?'next':'')+'" data-focus="'+p.lat+','+p.lng+'"><span class="mk">'+(i+1)+'</span><span class="t">'+fmtTime(sim.etas[i])+'</span><div class="w"><div><b>'+stopWords(s.kind)+' '+s.job+'</b> · '+esc(p.name)+'</div><small>'+(i===0?'NEXT · ':'')+esc(KINDS[j.kind])+(j.vehicle?' · '+esc(j.vehicle):'')+'</small></div></li>';});
+  h+='</ul><div class="row"><button class="btn small" type="button" data-done="'+t.id+'"'+(t.route.length?'':' disabled')+'>Mark next stop done</button><button class="btn small" type="button" data-text="'+t.id+'"'+(t.route.length?'':' disabled')+'>Text route</button><button class="btn small" type="button" data-openthread="'+t.id+'">Open texts</button></div>';
+  el.innerHTML=h;
+}
 function mapChrome(){
+  renderDay();
   const showPreview=S.tab==='call'&&S.preview;
   $('#map').classList.toggle('picking',!!S.pickMode);
   const lm=$('#lmap');if(lm)lm.classList.toggle('picking',!!S.pickMode);
@@ -775,14 +837,26 @@ function renderLeaflet(){
     L.polyline(routeGeom(pts)||pts.map(ll),{color,weight:dashed?5:4,opacity:.85,dashArray:dashed?'9 7':null}).addTo(LLAYER);
     stops.forEach((s,i)=>{const p=stopLoc(s);L.marker(ll(p),{icon:icon('<div class="lm-stop'+(s.kind==='drop'?' drop':'')+'" style="background:'+(s.job==='NEW'?cssVar('--accent'):color)+'">'+(i+1)+'</div>',18,18),title:(s.kind==='pick'?'Pick up ':'Drop ')+jobName(s.job)+' · '+p.name,keyboard:false}).addTo(LLAYER);});
   };
+  // finished stops: green check marks; for the picked truck, also the road it already drove (grey dashes)
+  for(const t of (S.selected&&!showPreview?[truck(S.selected)]:S.trucks)){
+    const one=S.selected===t.id&&!showPreview;
+    if(one&&t.done.length){const pts=[t.start,...t.done.map(d=>d.loc)];L.polyline(routeGeom(pts)||pts.map(ll),{color:cssVar('--muted'),weight:3,opacity:.7,dashArray:'4 6'}).addTo(LLAYER);}
+    for(const d of t.done)L.marker(ll(d.loc),{icon:icon('<div class="lm-done'+(one?'':' small')+'">✓</div>',one?18:13,one?18:13),title:'Done '+fmtTime(d.at)+': '+stopWords(d.kind)+' '+d.job+' · '+d.loc.name+' ('+t.driver+')',keyboard:false}).addTo(LLAYER);
+  }
   if(showPreview){const t=truck(S.preview.truck);draw(t,S.preview.stops,cssVar('--accent'),true);}
   else for(const t of (S.selected?[truck(S.selected)]:S.trucks))draw(t,t.route,cssVar('--eq-'+t.equip),false);
+  if(S.fitPending){
+    S.fitPending=false;
+    const t=S.selected&&truck(S.selected);
+    if(t){const pts=[t.start,...t.done.map(d=>d.loc),t.pos,...t.route.map(stopLoc)];LMAP.fitBounds(pts.map(ll),{padding:[40,40],maxZoom:13});}
+    else LMAP.setView([35.82,-84.0],10);
+  }
   for(const j of Object.values(S.jobs)){if(j.status!=='open')continue;L.marker(ll(j.pick),{icon:icon('<div class="lm-job'+(j.urgent?' urgent':'')+'"></div>',14,14),title:j.id+' waiting: '+j.pick.name,keyboard:false}).addTo(LLAYER);}
   if(S.tab==='call'&&S.draft)L.marker(ll(S.draft.pick),{icon:icon('<div class="lm-pin"></div>',18,18),title:'New call pickup',keyboard:false}).addTo(LLAYER);
   for(const t of S.trucks){
     const sel=S.selected===t.id||(showPreview&&S.preview.truck===t.id);
     const m=L.marker(ll(t.pos),{icon:icon('<div class="lm-truck'+(sel?' sel':'')+'" style="background:'+cssVar('--eq-'+t.equip)+'">'+EQUIP[t.equip].code+'<span class="lm-name">'+esc(t.driver)+'</span></div>',28,28),title:t.unit+', '+t.driver,zIndexOffset:1000}).addTo(LLAYER);
-    m.on('click',()=>{if(S.pickMode)return;S.selected=S.selected===t.id?null:t.id;if(S.tab==='call')switchTab('board');else renderAll();});
+    m.on('click',()=>{if(!S.pickMode)selectTruck(t.id);});
   }
 }
 function setPinAt(lat,lng){
@@ -826,7 +900,7 @@ function renderBoard(){
     h+='<div class="card truck'+(S.selected===t.id?' sel':'')+'" style="border-left-color:var(--eq-'+t.equip+')"><div class="truck-h"><span class="name">'+esc(t.unit)+'</span><span class="pill eq eqbg-'+t.equip+'">'+EQUIP[t.equip].label+'</span><span class="meta">'+esc(t.driver)+' · '+esc(t.phone)+' · '+(t.mapPref==='apple'?'Apple Maps':'Google Maps')+' · on board '+load+'/'+EQUIP[t.equip].cap+'</span>'+
        '<span class="totals num">'+sim.miles.toFixed(0)+' mi · free '+fmtTime(sim.finish)+'</span></div>';
     h+='<ul class="stops">'+(t.route.length?t.route.map((s,i)=>stopRow(t,s,i,sim.etas[i],{controls:true})).join(''):'<li class="empty">No stops. Truck is free at '+esc(t.pos.name)+'. Somebody is napping.</li>')+'</ul>';
-    h+='<div class="row"><button class="btn small" type="button" data-show="'+t.id+'">Show on map</button><button class="btn small" type="button" data-text="'+t.id+'"'+(t.route.length?'':' disabled')+'>Text route to '+esc(t.driver)+'</button><button class="btn small" type="button" data-done="'+t.id+'"'+(t.route.length?'':' disabled')+'>Mark next stop done</button></div></div>';
+    h+='<div class="row"><button class="btn small" type="button" data-show="'+t.id+'">See '+esc(t.driver)+'\'s day'+(t.done.length?' ('+t.done.length+' done)':'')+'</button><button class="btn small" type="button" data-text="'+t.id+'"'+(t.route.length?'':' disabled')+'>Text route to '+esc(t.driver)+'</button><button class="btn small" type="button" data-done="'+t.id+'"'+(t.route.length?'':' disabled')+'>Mark next stop done</button></div></div>';
   }
   $('#view-board').innerHTML=h;
 }
@@ -1180,7 +1254,8 @@ function renderAll(){
 }
 
 document.addEventListener('click',e=>{
-  const b=e.target.closest('button,[data-truck],tr[data-choose]');if(!b)return;
+  const b=e.target.closest('button,[data-truck],tr[data-choose],[data-focus]');if(!b)return;
+  if(b.dataset.focus){if(LMAP){const [la,ln]=b.dataset.focus.split(',').map(Number);LMAP.setView([la,ln],14);}return;}
   if(b.classList.contains('tab')){switchTab(b.dataset.tab);return;}
   if(b.dataset.goto){switchTab(b.dataset.goto);window.scrollTo(0,0);return;}
   if(b.dataset.pick){const i=b.dataset.pick.indexOf('|'),id=b.dataset.pick.slice(0,i),v=b.dataset.pick.slice(i+1);
@@ -1199,7 +1274,7 @@ document.addEventListener('click',e=>{
     return;}
   if(b.id==='resetBtn'){S=freshState();seedThreads();$('#callForm').innerHTML='';switchTab('board');toast('Demo reset to the morning start.');return;}
   if(b.id==='planBtn'){planMorning();return;}
-  if(b.id==='showAll'){S.selected=null;renderAll();return;}
+  if(b.id==='showAll'){S.selected=null;S.fitPending=true;renderAll();return;}
   if(b.id==='pickCancel'){S.pickMode=null;renderMap();return;}
   if(b.id==='simAccident'){
     const spot=HIGHWAY_SPOTS[Math.floor(Math.random()*HIGHWAY_SPOTS.length)];
@@ -1213,7 +1288,9 @@ document.addEventListener('click',e=>{
   if(b.id==='locBtn'){const t=truck(S.textTruck);const p={lat:t.pos.lat+(Math.random()-.5)*0.01,lng:t.pos.lng+(Math.random()-.5)*0.01};driverSays(t,'[Location pin] https://maps.google.com/?q='+coord(p),{loc:p});renderAll();return;}
   if(b.id==='ratesReset'){S.rates=JSON.parse(JSON.stringify(DEFAULT_RATES));renderAll();toast('Sample rates restored.');return;}
   if(b.dataset.best){assignBest(b.dataset.best);return;}
-  if(b.dataset.show){S.selected=b.dataset.show;renderAll();return;}
+  if(b.dataset.show){selectTruck(b.dataset.show,true);if(window.innerWidth<=920)$('.mapcol').scrollIntoView({behavior:'smooth'});return;}
+  if(b.dataset.unselect){S.selected=null;S.fitPending=true;renderAll();return;}
+  if(b.dataset.openthread){S.textTruck=b.dataset.openthread;switchTab('texts');return;}
   if(b.dataset.text){const t=truck(b.dataset.text);sendRoute(t,'Your route:');toast('Route texted to '+t.driver+'.');renderAll();return;}
   if(b.dataset.done){const t=truck(b.dataset.done),s=completeNext(t,false);if(s)toast((s.kind==='pick'?'Picked up ':'Dropped ')+s.job+'. Clock moved to '+fmtTime(S.clock)+'.');renderAll();return;}
   if(b.dataset.up){const [tid,i]=b.dataset.up.split(':');moveStop(truck(tid),+i,-1);return;}
@@ -1222,7 +1299,7 @@ document.addEventListener('click',e=>{
   if(b.dataset.as){S.textAs=b.dataset.as;renderAll();return;}
   if(b.dataset.chip){driverSays(truck(S.textTruck),b.dataset.chip);renderAll();return;}
   if(b.dataset.choose){S.draft.choice=b.dataset.choose;renderCallResults();return;}
-  if(b.dataset.truck&&!S.pickMode){S.selected=S.selected===b.dataset.truck?null:b.dataset.truck;if(S.tab==='call')switchTab('board');else renderAll();return;}
+  if(b.dataset.truck&&!S.pickMode){selectTruck(b.dataset.truck);return;}
 });
 document.addEventListener('keydown',e=>{
   if(e.key!=='Enter'&&e.key!==' ')return;
