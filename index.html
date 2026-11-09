@@ -890,6 +890,8 @@ function loadDraft(){try{const v=JSON.parse(localStorage.getItem('hh-draft')||'{
 function saveDraft(){try{localStorage.setItem('hh-draft',JSON.stringify(ANS));}catch(e){}}
 function loadRespId(){try{let id=localStorage.getItem('hh-id');if(!id){id=newId();localStorage.setItem('hh-id',id);}return id;}catch(e){return newId();}}
 let ANS=loadDraft(),RESP=[],respState='loading',DB=null;const RESP_ID=loadRespId();
+// Web address of the Google Sheet receiver (apps-script/Code.gs). Empty means answers go out by "Copy my answers" only.
+const SHEET_URL='';
 
 function qHtml(q){
   if(q.sec)return '<h3>'+esc(q.sec)+'</h3>';
@@ -913,7 +915,7 @@ function renderAsk(){
 }
 function renderAskStatus(){
   const m=$('#saveMsg');if(!m||m.dataset.locked)return;
-  m.textContent=respState==='off'?'Saving is off on this link. Tap "Copy my answers" and text them to whoever sent you this.':respState==='slow'?'Cannot reach the answer box yet. Your answers stay on this device. You can also copy them.':'Your answers save for everyone who helps plan this.';
+  m.textContent=(respState==='off'&&SHEET_URL)?'Your answers go to the H&H answer sheet. Save as often as you want.':respState==='off'?'Saving is off on this link. Tap "Copy my answers" and text them to whoever sent you this.':respState==='slow'?'Cannot reach the answer box yet. Your answers stay on this device. You can also copy them.':'Your answers save for everyone who helps plan this.';
 }
 function answersText(){
   const out=['H&H dispatch tool: answers'+(ANS.name?' from '+ANS.name:'')];
@@ -928,21 +930,28 @@ function answersText(){
   return out.join('\n');
 }
 async function saveAnswers(){
-  const m=$('#saveMsg')||{};saveDraft();
-  if(!DB){if(m.textContent!==undefined)m.textContent='Saving is off on this link. Tap "Copy my answers" and text them to whoever sent you this.';return false;}
-  if(m.textContent!==undefined)m.textContent='Saving…';
-  try{
-    await DB.collection('responses').doc(RESP_ID).set(Object.assign({},ANS,{updatedAt:new Date().toISOString()}));
-    if(m.textContent!==undefined)m.textContent='Saved. Thanks. You may now go back to doing nothing.';return true;
-  }catch(e){
-    if(m.textContent!==undefined)m.textContent=(e&&e.code==='invalid_argument')?'This link does not let you save. Tap "Copy my answers" and text them in.':'Could not save right now. Try again in a minute, or copy your answers.';
-    return false;
+  const m=$('#saveMsg'),say=t=>{if(m)m.textContent=t;};saveDraft();
+  const thanks='Saved. Thanks. You may now go back to doing nothing.';
+  if(DB){
+    say('Saving…');
+    try{await DB.collection('responses').doc(RESP_ID).set(Object.assign({},ANS,{updatedAt:new Date().toISOString()}));say(thanks);return true;}
+    catch(e){say((e&&e.code==='invalid_argument')?'This link does not let you save. Tap "Copy my answers" and text them in.':'Could not save right now. Try again in a minute, or copy your answers.');return false;}
   }
+  if(SHEET_URL){
+    say('Saving…');
+    try{
+      const r=await fetch(SHEET_URL,{method:'POST',body:JSON.stringify(Object.assign({},ANS,{responseId:RESP_ID,savedAt:new Date().toISOString()}))});
+      const j=await r.json();
+      if(j&&j.ok){say(thanks);return true;}
+      say('The answer sheet said no. Copy your answers and text them in instead.');return false;
+    }catch(e){say('Could not save. Check your signal and try again, or copy your answers.');return false;}
+  }
+  say('Saving is off on this link. Tap "Copy my answers" and text them to whoever sent you this.');return false;
 }
 function renderTally(){
   const el=$('#tally');if(!el)return;
   const rs=RESP.filter(r=>r.id!==undefined);
-  if(!rs.length){el.innerHTML=respState==='off'?'':'<div class="card tally"><h3>Answers so far</h3><p class="lede">Nobody has saved answers yet. Be the first. Somebody has to be.</p></div>';return;}
+  if(!rs.length){el.innerHTML=respState==='off'?(SHEET_URL?'<div class="card tally"><h3>Answers so far</h3><p class="lede">Answers go to a Google Sheet. The boss can see them there.</p></div>':''):'<div class="card tally"><h3>Answers so far</h3><p class="lede">Nobody has saved answers yet. Be the first. Somebody has to be.</p></div>';return;}
   let h='<div class="card tally"><h3>Answers so far: '+rs.length+' '+(rs.length===1?'person':'people')+'</h3><p class="lede">Green is "Need it". Yellow is "Nice to have".</p>';
   for(const [k,l] of FEATURES){
     let need=0,nice=0;rs.forEach(r=>{const v=(r.features||{})[k];if(v==='Need it')need++;else if(v==='Nice to have')nice++;});
