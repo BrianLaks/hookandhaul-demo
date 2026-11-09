@@ -286,6 +286,20 @@ table.rt input{width:84px;border:1px solid var(--line);border-radius:4px;padding
 .eqf-flatbed{fill:var(--eq-flatbed)} .eqf-wheellift{fill:var(--eq-wheellift)} .eqf-carrier{fill:var(--eq-carrier)} .eqf-heavy{fill:var(--eq-heavy)}
 .eqs-flatbed{stroke:var(--eq-flatbed)} .eqs-wheellift{stroke:var(--eq-wheellift)} .eqs-carrier{stroke:var(--eq-carrier)} .eqs-heavy{stroke:var(--eq-heavy)}
 .pinmark{fill:var(--accent);stroke:var(--ink);stroke-width:1.5}
+/* Leaflet street map */
+#lmap{width:100%;height:min(72vh,620px);border-radius:4px;background:var(--map);z-index:0}
+@media (max-width:920px){#lmap{height:420px}}
+#lmap.picking{cursor:crosshair}
+.lm{background:none;border:0}
+.lm-truck{position:relative;width:28px;height:28px;border-radius:50%;color:#fff;font:700 10px var(--font-body);display:grid;place-items:center;border:2.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer}
+.lm-truck.sel{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent)}
+.lm-name{position:absolute;left:30px;top:-6px;white-space:nowrap;font:600 11px var(--font-body);color:#17212c;background:rgba(255,255,255,.9);padding:0 4px;border-radius:3px}
+.lm-stop{width:18px;height:18px;border-radius:50%;color:#fff;font:600 10px var(--font-body);display:grid;place-items:center;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.lm-stop.drop{border-radius:3px}
+.lm-job{width:12px;height:12px;margin:1px;transform:rotate(45deg);background:#fff;border:2.5px solid var(--accent)}
+.lm-job.urgent{border-color:var(--urgent)}
+.lm-yard{background:#17212c;color:#fff;font:700 10px var(--font-body);padding:2px 0;border-radius:3px;text-align:center;border:1px solid #fff}
+.lm-pin{width:16px;height:16px;border-radius:50% 50% 50% 0;background:var(--accent);border:2px solid #17212c;transform:rotate(-45deg)}
 @media (prefers-reduced-motion:no-preference){ .truckmark{transition:cx .4s, cy .4s} }
 </style>
 
@@ -323,6 +337,7 @@ table.rt input{width:84px;border:1px solid var(--line);border-radius:4px;padding
         <span><svg width="12" height="12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" transform="rotate(45 6 6)" class="jobmark"/></svg>Waiting job</span>
         <span><svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="routeline preview"/></svg>Proposed route</span>
       </div>
+      <div class="legend" id="milesNote"></div>
     </div>
   </section>
 
@@ -436,7 +451,48 @@ function money(n){return '$'+n.toFixed(2);}
 function money0(n){return '$'+Math.round(n).toLocaleString('en-US');}
 function fmtTime(m){m=Math.round(m);let h=Math.floor(m/60)%24,mm=m%60;const ap=h>=12?'PM':'AM';h=h%12||12;return h+':'+String(mm).padStart(2,'0')+' '+ap;}
 function truck(id){return S.trucks.find(t=>t.id===id);}
+/* ---------- real road miles (public page only; the claude.ai link blocks outside services) ---------- */
+const REAL_MAP=/(^|\.)github\.io$/.test(location.hostname)||location.hostname==='localhost'||location.hostname==='127.0.0.1';
+const OSRM='https://router.project-osrm.org';
+const ROAD={ready:false,failed:false,loading:false,again:false,pts:PLACES.map(p=>({id:p.id,lat:p.lat,lng:p.lng})),idx:{},dist:null,dur:null};
+let pinSeq=0;
+async function loadRoadTable(){
+  if(!REAL_MAP)return;
+  if(ROAD.loading){ROAD.again=true;return;}
+  ROAD.loading=true;
+  const pts=ROAD.pts.slice();
+  try{
+    const coords=pts.map(p=>p.lng.toFixed(5)+','+p.lat.toFixed(5)).join(';');
+    const r=await fetch(OSRM+'/table/v1/driving/'+coords+'?annotations=distance,duration');
+    const j=await r.json();
+    if(j.code!=='Ok')throw new Error(j.code||'bad answer');
+    ROAD.dist=j.distances;ROAD.dur=j.durations;ROAD.idx=Object.fromEntries(pts.map((p,i)=>[p.id,i]));ROAD.ready=true;ROAD.failed=false;
+  }catch(e){ROAD.failed=!ROAD.ready;}
+  ROAD.loading=false;
+  if(ROAD.again){ROAD.again=false;loadRoadTable();return;}
+  renderAll();
+}
+function addRoadPoint(p){
+  if(!p.id)p.id='pin'+(++pinSeq);
+  if(REAL_MAP){ROAD.pts.push({id:p.id,lat:p.lat,lng:p.lng});loadRoadTable();}
+  return p;
+}
+function roadPair(a,b){
+  if(!ROAD.ready||!a.id||!b.id)return null;
+  if(a.id===b.id)return {mi:0,min:0};
+  const i=ROAD.idx[a.id],j=ROAD.idx[b.id];if(i==null||j==null)return null;
+  const d=ROAD.dist[i][j],t=ROAD.dur[i][j];if(d==null||t==null)return null;
+  return {mi:d/1609.344,min:t/60};
+}
+function travelMin(a,b){const r=roadPair(a,b);return r?r.min:dist(a,b)/S.rates.global.mph*60;}
+function milesSource(){
+  if(!REAL_MAP)return 'Miles are estimates (straight line × '+S.rates.global.roadFactor+'). Real road miles work on the public page.';
+  if(ROAD.ready)return 'Road miles and drive times: OpenStreetMap routing (OSRM). No live traffic.';
+  if(ROAD.failed)return 'The road-miles service did not answer. Miles are estimates for now.';
+  return 'Getting real road miles…';
+}
 function dist(a,b){
+  const road=roadPair(a,b);if(road)return road.mi;
   const R=3958.8,toR=Math.PI/180,dLat=(b.lat-a.lat)*toR,dLng=(b.lng-a.lng)*toR;
   const x=Math.sin(dLat/2)**2+Math.cos(a.lat*toR)*Math.cos(b.lat*toR)*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(x))*S.rates.global.roadFactor;
@@ -457,7 +513,7 @@ function simulate(t,stops){
   for(const s of stops){
     const loc=stopLoc(s),d=dist(pos,loc);
     miles+=d; if(load>0) loadedMi+=d;
-    time+=d/g.mph*60; etas.push(time);
+    time+=travelMin(pos,loc); etas.push(time);
     if(s.kind==='pick'){load++;seen.add(s.job);if(load>cap)ok=false;time+=g.pickMin;}
     else{const j=S.jobs[s.job];if(j.status!=='loaded'&&!seen.has(s.job))ok=false;load--;time+=g.dropMin;}
     pos=loc;
@@ -594,7 +650,7 @@ function driverSays(t,text,extra){
     const s=t.route[0]||null,j=s?S.jobs[s.job]:Object.values(S.jobs).find(x=>x.truck===t.id&&x.status==='done');
     if(j){j.photos++;reply='Photo saved to '+j.id+' ('+j.photos+' photo'+(j.photos>1?'s':'')+' on file).';}else reply='Photo saved. It is not linked to a job yet. Dispatch will link it.';
   }else if(extra&&extra.loc){
-    t.pos={lat:extra.loc.lat,lng:extra.loc.lng,name:'Shared location'};reply='Location received. Your truck is updated on the dispatch map.';
+    t.pos=addRoadPoint({lat:extra.loc.lat,lng:extra.loc.lng,name:'Shared location'});reply='Location received. Your truck is updated on the dispatch map.';
   }else if(cmd==='HELP'){
     reply='Commands:\nSCHEDULE - your full route\nNEXT - your next stop and a map link\nDONE - finish your next stop\nLATE 15 - tell dispatch you run 15 min late\nMAP APPLE or MAP GOOGLE - pick your map app\nSend a photo or a location pin at any time.';
   }else if(cmd==='SCHEDULE'||cmd==='S'){
@@ -616,6 +672,7 @@ function driverSays(t,text,extra){
 
 /* ---------- render: map ---------- */
 function renderMap(){
+  if(LMAP){renderLeaflet();mapChrome();return;}
   const svg=$('#map'),parts=[];
   parts.push('<rect x="0" y="0" width="'+MAP_W+'" height="'+MAP_H+'" fill="var(--map)"/>');
   // schematic highways around Maryville and Knoxville (not to exact scale)
@@ -662,11 +719,76 @@ function renderMap(){
     parts.push('<g data-truck="'+t.id+'" role="button" tabindex="0" aria-label="'+esc(t.unit+', '+t.driver)+'"><circle class="truckmark eqf-'+t.equip+(sel?' sel':'')+'" cx="'+q.x.toFixed(1)+'" cy="'+q.y.toFixed(1)+'" r="12"/><text class="trucktxt" x="'+q.x.toFixed(1)+'" y="'+q.y.toFixed(1)+'">'+EQUIP[t.equip].code+'</text><text class="maplabel" x="'+(q.x+15).toFixed(1)+'" y="'+(q.y-8).toFixed(1)+'">'+esc(t.driver)+'</text></g>');
   }
   svg.innerHTML=parts.join('');
-  svg.classList.toggle('picking',!!S.pickMode);
+  mapChrome();
+}
+function mapChrome(){
+  const showPreview=S.tab==='call'&&S.preview;
+  $('#map').classList.toggle('picking',!!S.pickMode);
+  const lm=$('#lmap');if(lm)lm.classList.toggle('picking',!!S.pickMode);
   $('#pickBanner').hidden=!S.pickMode;
   if(S.pickMode)$('#pickText').textContent='Tap the map to set the '+(S.pickMode==='pick'?'pickup':'drop-off');
   $('#mapTitle').textContent=showPreview?'Proposed route: '+truck(S.preview.truck).driver:(S.selected?truck(S.selected).unit+' route':'All trucks');
   $('#showAll').hidden=!S.selected||showPreview;
+  $('#milesNote').textContent=milesSource();
+}
+
+/* ---------- real street map (Leaflet + OpenStreetMap), public page only ---------- */
+let LMAP=null,LLAYER=null;const ROUTE_GEOM={};
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function loadLeaflet(){
+  return new Promise((ok,fail)=>{
+    const css=document.createElement('link');css.rel='stylesheet';css.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';document.head.appendChild(css);
+    const js=document.createElement('script');js.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';js.onload=ok;js.onerror=fail;document.head.appendChild(js);
+  });
+}
+async function initRealMap(){
+  if(!REAL_MAP)return;
+  try{await loadLeaflet();}catch(e){return;} // keep the drawn map if Leaflet cannot load
+  const div=document.createElement('div');div.id='lmap';div.setAttribute('aria-label','Street map of trucks, jobs and routes');
+  $('#map').after(div);
+  try{
+    const map=window.L.map(div,{scrollWheelZoom:false}).setView([35.82,-84.0],10);
+    window.L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+    LLAYER=window.L.layerGroup().addTo(map);
+    map.on('click',e=>{if(S.pickMode)setPinAt(e.latlng.lat,e.latlng.lng);});
+    LMAP=map;$('#map').hidden=true;
+    renderMap();
+  }catch(e){LMAP=null;div.remove();$('#map').hidden=false;renderMap();}
+}
+function routeGeom(pts){
+  const key=pts.map(p=>p.lat.toFixed(5)+','+p.lng.toFixed(5)).join(';');
+  if(key in ROUTE_GEOM)return ROUTE_GEOM[key]==='loading'?null:ROUTE_GEOM[key];
+  ROUTE_GEOM[key]='loading';
+  fetch(OSRM+'/route/v1/driving/'+pts.map(p=>p.lng.toFixed(5)+','+p.lat.toFixed(5)).join(';')+'?overview=full&geometries=geojson')
+    .then(r=>r.json()).then(j=>{ROUTE_GEOM[key]=j.code==='Ok'?j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]):null;renderMap();})
+    .catch(()=>{ROUTE_GEOM[key]=null;});
+  return null;
+}
+function renderLeaflet(){
+  const L=window.L,ll=p=>[p.lat,p.lng],icon=(html,w,h)=>L.divIcon({className:'lm',html,iconSize:[w,h],iconAnchor:[w/2,h/2]});
+  LLAYER.clearLayers();
+  for(const id of ['yard','iaa'])L.marker(ll(PL[id]),{icon:icon('<div class="lm-yard">'+(id==='yard'?'H&amp;H':'IAA')+'</div>',36,18),title:PL[id].name,keyboard:false}).addTo(LLAYER);
+  const showPreview=S.tab==='call'&&S.preview;
+  const draw=(t,stops,color,dashed)=>{
+    if(!stops.length)return;
+    const pts=[t.pos,...stops.map(stopLoc)];
+    L.polyline(routeGeom(pts)||pts.map(ll),{color,weight:dashed?5:4,opacity:.85,dashArray:dashed?'9 7':null}).addTo(LLAYER);
+    stops.forEach((s,i)=>{const p=stopLoc(s);L.marker(ll(p),{icon:icon('<div class="lm-stop'+(s.kind==='drop'?' drop':'')+'" style="background:'+(s.job==='NEW'?cssVar('--accent'):color)+'">'+(i+1)+'</div>',18,18),title:(s.kind==='pick'?'Pick up ':'Drop ')+jobName(s.job)+' · '+p.name,keyboard:false}).addTo(LLAYER);});
+  };
+  if(showPreview){const t=truck(S.preview.truck);draw(t,S.preview.stops,cssVar('--accent'),true);}
+  else for(const t of (S.selected?[truck(S.selected)]:S.trucks))draw(t,t.route,cssVar('--eq-'+t.equip),false);
+  for(const j of Object.values(S.jobs)){if(j.status!=='open')continue;L.marker(ll(j.pick),{icon:icon('<div class="lm-job'+(j.urgent?' urgent':'')+'"></div>',14,14),title:j.id+' waiting: '+j.pick.name,keyboard:false}).addTo(LLAYER);}
+  if(S.tab==='call'&&S.draft)L.marker(ll(S.draft.pick),{icon:icon('<div class="lm-pin"></div>',18,18),title:'New call pickup',keyboard:false}).addTo(LLAYER);
+  for(const t of S.trucks){
+    const sel=S.selected===t.id||(showPreview&&S.preview.truck===t.id);
+    const m=L.marker(ll(t.pos),{icon:icon('<div class="lm-truck'+(sel?' sel':'')+'" style="background:'+cssVar('--eq-'+t.equip)+'">'+EQUIP[t.equip].code+'<span class="lm-name">'+esc(t.driver)+'</span></div>',28,28),title:t.unit+', '+t.driver,zIndexOffset:1000}).addTo(LLAYER);
+    m.on('click',()=>{if(S.pickMode)return;S.selected=S.selected===t.id?null:t.id;if(S.tab==='call')switchTab('board');else renderAll();});
+  }
+}
+function setPinAt(lat,lng){
+  const loc=addRoadPoint({name:'Pin '+lat.toFixed(3)+', '+lng.toFixed(3),lat,lng});
+  if(S.pickMode==='pick'){S.draft.pick=loc;S.draft.pickSel='custom';}else{S.draft.drop=loc;S.draft.dropSel='custom';}
+  S.pickMode=null;S.draft.choice=null;renderCallForm();renderCallResults();
 }
 
 /* ---------- render: board ---------- */
@@ -834,7 +956,7 @@ function renderPlan(){
   '<li><b>Divert with one tap.</b> The driver gets a text with the new route and a map link for Google Maps or Apple Maps.</li>'+
   '<li><b>Drivers use text messages.</b> They reply DONE, NEXT, or SCHEDULE. They text photos and location pins. No app to install.</li></ul></div>'+
   '<div><h3>Towbook stays</h3><p>Towbook keeps doing photos, invoices, driver pay and QuickBooks. This tool reads jobs and driver locations from Towbook and sends assignments back. It needs Towbook to give API access. If there is no API, the fallback is the IAA emails and a daily export.</p></div>'+
-  '<div><h3>What is pretend in this mock</h3><ul><li>Miles are straight-line distance times a road factor. The real tool uses real road miles from a map service.</li><li>Texts appear in the phone panel only. Nothing is sent.</li><li>Trucks, jobs, rates and phone numbers are examples.</li></ul></div>'+
+  '<div><h3>What is pretend in this mock</h3><ul><li>On the public page, the map, road miles and drive times are real (OpenStreetMap and its free OSRM routing). There is no live traffic. The real tool can use Google Maps for traffic, which needs a Google billing account. On the claude.ai link, miles are estimates.</li><li>Texts appear in the phone panel only. Nothing is sent.</li><li>Trucks, jobs, rates and phone numbers are examples.</li></ul></div>'+
   '<div><h3>Build steps</h3></div>'+
   '<div class="phase"><span class="tag">STEP 1</span><div><b>Dispatch helper on real data.</b> Read jobs and trucks from Towbook. Real road miles. Quotes from his own rate sheet. Morning plan and call ranking.</div></div>'+
   '<div class="phase"><span class="tag">STEP 2</span><div><b>Real texts to drivers.</b> Use a texting service (for example Twilio). US business texting needs a one-time carrier registration (called 10DLC) before messages go through. Each text costs about a cent.</div></div>'+
@@ -1024,7 +1146,7 @@ function renderHelp(){
   '<div class="faq"><h3>Questions people ask</h3><ul>'+
     '<li><b>Can I break it?</b>No. It is all fake. Tap <b>Reset demo</b> at the top and it starts over. Unlike the winch on truck 3.</li>'+
     '<li><b>Did that text really go to my driver?</b>No. Nothing leaves this page. Your drivers are safe from your typing.</li>'+
-    '<li><b>Are the miles right?</b>Close, not exact. The real version uses real road miles.</li>'+
+    '<li><b>Are the miles right?</b>On the public web page, yes. They come from real roads (OpenStreetMap). They do not know about traffic or that one cop who sets up on 129. On the claude.ai link, they are close guesses.</li>'+
     '<li><b>Will this replace the dispatcher?</b>No. It cannot drive, cannot argue with a cop, and cannot find the good gas station bathroom.</li>'+
     '<li><b>Why do my answers say "saving is off"?</b>Your link may not allow saving. Tap <b>Copy my answers</b> and text them to whoever sent you this.</li>'+
     '<li><b>Do drivers need a new app?</b>No. It works with plain texts. An app comes later, only if you want one.</li></ul></div>'+
@@ -1136,9 +1258,7 @@ $('#map').addEventListener('click',e=>{
   e.stopPropagation();
   const svg=$('#map'),pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;
   const p=pt.matrixTransform(svg.getScreenCTM().inverse()),ll=fromPx(p.x,p.y);
-  const loc={name:'Pin '+ll.lat.toFixed(3)+', '+ll.lng.toFixed(3),lat:ll.lat,lng:ll.lng};
-  if(S.pickMode==='pick'){S.draft.pick=loc;S.draft.pickSel='custom';}else{S.draft.drop=loc;S.draft.dropSel='custom';}
-  S.pickMode=null;S.draft.choice=null;renderCallForm();renderCallResults();
+  setPinAt(ll.lat,ll.lng);
 });
 // When Rates inputs change, re-render the board numbers on next view; quotes recalc on the call tab.
 
@@ -1155,6 +1275,11 @@ function seedThreads(){
 S=freshState();seedThreads();
 switchTab('board');
 connectAnswers();
+if(REAL_MAP){
+  const note=document.querySelector('.demo-note');
+  if(note)note.firstChild.textContent='This is a practice version. The trucks, jobs and phone numbers are fake, and no texts really go out. The map and the miles are real roads. Click around. You cannot break it. When you are done, ';
+  loadRoadTable();initRealMap();
+}
 </script>
 
 </body>
